@@ -187,7 +187,11 @@ _ASK_CLAUSE = {
     "kyc_bank": {
         "en": "share OTP / click a link to complete KYC",
         "hi": "OTP साझा करने / KYC लिंक पर क्लिक करने",
-        "te": "OTP షేర్ చేయమని / KYC లింక్ క్లిక్ చేయమని",
+        # NOTE: the Telugu `asked` template appends " చేయమని అడిగింది." after this
+        # fragment, so the fragment itself must NOT end in "చేయమని" — otherwise
+        # you get "…చేయమని చేయమని అడిగింది." Kept as a bare noun phrase to slot in
+        # cleanly: "అది నన్ను OTP షేర్ / KYC లింక్ క్లిక్ చేయమని అడిగింది."
+        "te": "OTP షేర్ / KYC లింక్ క్లిక్",
     },
     "courier_parcel": {
         "en": "pay a customs / clearance fee to release a parcel",
