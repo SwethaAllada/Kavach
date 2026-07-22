@@ -1,3 +1,12 @@
+# Render blueprint for the Kavach backend.
+# Pushing this file to `origin/main` lets Render provision the service
+# from the "Blueprints" tab. You can also configure the same fields via
+# the dashboard by hand — either works.
+#
+# Every secret env var is `sync: false`, which means the VALUE is NOT stored
+# in the blueprint; you paste it into the Render dashboard once. Secrets
+# never enter git.
+
 services:
   - type: web
     name: kavach-backend
@@ -6,14 +15,40 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
-      - key: ANTHROPIC_API_KEY
+      # --- LLM provider (backend-only) ---
+      - key: XAI_API_KEY
         sync: false
+
+      # --- Supabase telemetry (backend-only) ---
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
+
+      # --- Twilio webhook signature verification ---
+      # Leave TWILIO_AUTH_TOKEN unset until you provision a number.
+      # Flip VERIFY_TWILIO_SIGNATURE to `true` once real Twilio traffic starts.
       - key: TWILIO_AUTH_TOKEN
         sync: false
+      - key: VERIFY_TWILIO_SIGNATURE
+        value: "false"
+
+      # --- CORS allowlist (comma-separated) ---
+      # Set to the exact Vercel URL once the frontend deploys. Update and
+      # redeploy after Vercel gives you the URL.
       - key: FRONTEND_ORIGIN
         sync: false
+
+      # --- Rate limit (per-IP sliding window) ---
+      - key: KAVACH_RATE_LIMIT_PER_MIN
+        value: "30"
+      - key: KAVACH_RATE_LIMIT_ENABLED
+        value: "true"
+
+      # --- LLM knobs (safe defaults; override only if needed) ---
+      - key: KAVACH_MODEL
+        value: "grok-3-mini"
+      - key: KAVACH_BASE_URL
+        value: "https://api.x.ai/v1"
