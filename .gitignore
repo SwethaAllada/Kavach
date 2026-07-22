@@ -5,3 +5,9 @@ __pycache__/
 node_modules/
 dist/
 .DS_Store
+
+# Lockfile intentionally not tracked — Vercel's npm 10 generates its own
+# lockfileVersion 3 during install; committing the local npm 8.5.5-produced
+# v2 lockfile causes intermittent `Exit handler never called!` crashes on
+# Vercel's build worker.
+package-lock.json
