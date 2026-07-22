@@ -78,6 +78,33 @@ export async function analyze(text, { signal } = {}) {
   return body
 }
 
+/**
+ * Fetch the anonymized trends aggregate. Never throws — on any failure
+ * returns an empty shape with status="unavailable" so the caller can render
+ * a graceful message without a crash.
+ */
+export async function getTrends({ signal } = {}) {
+  const empty = {
+    status: 'unavailable',
+    total_count: 0,
+    by_scam_type: {},
+    by_risk_bucket: { low: 0, medium: 0, high: 0 },
+    by_language: {},
+    by_decision_source: {},
+    fallback_used_count: 0,
+    last_7_days: [],
+  }
+  try {
+    const response = await fetch(`${API_BASE}/trends`, { signal })
+    if (!response.ok) return empty
+    const body = await response.json()
+    if (!body || typeof body !== 'object') return empty
+    return { ...empty, ...body }
+  } catch {
+    return empty
+  }
+}
+
 /** Base URL, exposed for status displays and debugging. */
 export function getApiBase() {
   return API_BASE

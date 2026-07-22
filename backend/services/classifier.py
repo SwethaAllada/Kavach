@@ -11,9 +11,11 @@ import logging
 import re
 from typing import Optional
 
+from core import privacy as privacy_module
 from services import llm as llm_service
 from services import rag as rag_service
 from services import report as report_service
+from services import store as store_service
 from services.llm import LLMUnavailable
 from services.rules import SCAM_TAXONOMY, rules_classify
 
@@ -472,6 +474,17 @@ def analyze(text: str, language: Optional[str] = None) -> dict:
         verdict.setdefault(
             "report", {"channels": REPORT_CHANNELS, "prefilled_summary": ""}
         )
+
+    # 6. Anonymized telemetry — fire-and-forget. Reads a whitelisted subset
+    #    of the verdict, never sees the original text. Any failure below
+    #    is swallowed; the returned verdict is byte-identical whether or
+    #    not telemetry is available.
+    try:
+        record = privacy_module.to_anonymized_record(verdict)
+        store_service.log_signal(record)
+    except Exception as e:
+        log.warning("telemetry failed (swallowed): %s", e)
+
     return verdict
 
 

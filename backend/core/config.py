@@ -11,6 +11,11 @@ class Settings:
         self.supabase_url: str = os.getenv("SUPABASE_URL", "")
         self.supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
         self.twilio_auth_token: str = os.getenv("TWILIO_AUTH_TOKEN", "")
+        # Off by default for local dev; flip to "true" in production once the
+        # webhook is reachable from Twilio and the token is set.
+        self.verify_twilio_signature: bool = os.getenv(
+            "VERIFY_TWILIO_SIGNATURE", "false"
+        ).strip().lower() in ("1", "true", "yes", "on")
         self.frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
         self.model: str = os.getenv("KAVACH_MODEL", "grok-3-mini")

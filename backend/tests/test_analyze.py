@@ -469,3 +469,221 @@ def test_report_does_not_perturb_decision(monkeypatch):
             f"report step perturbed field {field!r}: "
             f"{v_with[field]!r} vs {v_without[field]!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: anonymized telemetry + Trends
+# ---------------------------------------------------------------------------
+
+
+def test_to_anonymized_record_strips_everything_but_whitelist():
+    """The anonymized record must contain ONLY the whitelisted keys, even when
+    the input verdict has message text, phrases, and URLs on it."""
+    from core.privacy import to_anonymized_record, anonymized_fields
+
+    verdict = {
+        "scam_type": "digital_arrest",
+        "risk": 92,
+        "confidence": 0.95,
+        "decision_source": "rules+llm+rag",
+        "fallback_used": False,
+        "signals": ["authority", "payment"],
+        "matched_patterns": [
+            {
+                "id": "DA-01",
+                "title": "Courier parcel → CBI/Customs digital arrest",
+                # These indicators echo user phrasing and MUST NOT be stored:
+                "matched_indicators": ["parcel with your aadhaar", "cbi"],
+            }
+        ],
+        "artifacts": {
+            "urls": ["https://sbi-kyc-verify.co.in"],
+            "phones": ["+919812345678"],
+        },
+        "explanation": "This is user-supplied text that MUST NOT be stored.",
+        "recommended_action": "another user-language string",
+        "detected_language": "en",
+        "report": {
+            "should_report": True,
+            "urgency": "immediate",
+            # This is derived from the user's message and MUST NOT be stored:
+            "prefilled_summary": "On [DATE], I received a message from CBI...",
+            "channels": [{"name": "1930", "value": "1930"}],
+        },
+    }
+
+    record = to_anonymized_record(verdict)
+
+    # (1) Exactly and only the whitelist.
+    assert set(record.keys()) == anonymized_fields()
+
+    # (2) The whitelisted values are the expected shape.
+    assert record["scam_type"] == "digital_arrest"
+    assert record["risk_bucket"] == "high"        # 92 -> high
+    assert record["detected_language"] == "en"
+    assert record["decision_source"] == "rules+llm+rag"
+    assert record["fallback_used"] is False
+
+    # (3) Load-bearing: no user-supplied text or phrase can appear anywhere.
+    serialized = repr(record)
+    banned_snippets = [
+        "aadhaar",       # matched_indicator
+        "cbi",           # matched_indicator (lowercase form we stored)
+        "sbi-kyc",       # url
+        "9812345678",    # phone
+        "user-supplied", # explanation
+        "user-language", # recommended_action
+        "[DATE]",        # prefilled_summary
+        "channels",      # from report
+        "urgency",       # from report
+    ]
+    for snippet in banned_snippets:
+        assert snippet.lower() not in serialized.lower(), (
+            f"anonymized record leaked user data (found {snippet!r} in {serialized!r})"
+        )
+
+    # (4) Raw risk score MUST NOT be present — only the bucket.
+    assert "risk" not in record
+    assert 92 not in record.values()
+
+
+def test_to_anonymized_record_bucket_boundaries():
+    from core.privacy import to_anonymized_record
+    for risk, expected in [(0, "low"), (39, "low"), (40, "medium"), (69, "medium"),
+                           (70, "high"), (99, "high"), (100, "high")]:
+        rec = to_anonymized_record({"risk": risk, "scam_type": "other"})
+        assert rec["risk_bucket"] == expected, f"risk={risk} -> {rec['risk_bucket']}"
+
+
+def test_to_anonymized_record_never_raises_on_bad_input():
+    from core.privacy import to_anonymized_record, anonymized_fields
+    # None, bad types, missing keys — must still return a whitelist dict.
+    for bad in (None, [], "string", 42, {"risk": "not-a-number"}):
+        rec = to_anonymized_record(bad)
+        assert set(rec.keys()) == anonymized_fields()
+
+
+def test_analyze_still_returns_valid_verdict_when_telemetry_raises(monkeypatch):
+    """Load-bearing: /analyze must be unaffected by telemetry failures."""
+    from services import classifier as cm
+
+    def _fake_llm(text: str, grounding: str = "") -> dict:
+        return {
+            "scam_type": "digital_arrest",
+            "risk": 92,
+            "confidence": 0.9,
+            "signals": ["authority", "payment"],
+            "explanation": "Classic digital arrest pattern.",
+            "recommended_action": "Report to 1930.",
+            "detected_language": "en",
+        }
+
+    def _boom(_record):
+        raise RuntimeError("supabase is on fire")
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm)
+    monkeypatch.setattr(cm.store_service, "log_signal", _boom)
+
+    text = (
+        "This is CBI. A parcel in your name has illegal items. Stay on video "
+        "call, do not tell anyone, transfer for verification."
+    )
+    verdict = cm.analyze(text)
+    _assert_valid_verdict(verdict)
+    assert verdict["scam_type"] == "digital_arrest"
+
+
+def test_telemetry_does_not_perturb_decision(monkeypatch):
+    """Byte-identity: decision fields must be identical whether telemetry is
+    on (log_signal succeeds) or off (log_signal is a no-op).
+    """
+    from services import classifier as cm
+
+    def _fake_llm(text: str, grounding: str = "") -> dict:
+        return {
+            "scam_type": "digital_arrest",
+            "risk": 92,
+            "confidence": 0.9,
+            "signals": ["authority", "payment"],
+            "explanation": "Digital arrest pattern.",
+            "recommended_action": "Report to 1930.",
+            "detected_language": "en",
+        }
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm)
+
+    text = (
+        "This is CBI. A parcel in your name has illegal items. Stay on video "
+        "call, do not tell anyone, transfer for verification."
+    )
+
+    # Telemetry ON (records into a list) vs OFF (no-op).
+    captured = []
+    monkeypatch.setattr(cm.store_service, "log_signal", lambda r: captured.append(r))
+    v_on = cm.analyze(text)
+    assert len(captured) == 1
+    assert set(captured[0].keys()) == cm.privacy_module.anonymized_fields()
+
+    monkeypatch.setattr(cm.store_service, "log_signal", lambda r: None)
+    v_off = cm.analyze(text)
+
+    for field in ("scam_type", "risk", "confidence", "decision_source",
+                  "fallback_used", "signals", "matched_patterns", "report"):
+        assert v_on[field] == v_off[field], (
+            f"telemetry perturbed field {field!r}: {v_on[field]!r} vs {v_off[field]!r}"
+        )
+
+
+def test_get_trends_empty_shape(monkeypatch):
+    """When store isn't configured / no rows, get_trends returns a valid empty shape."""
+    from services import store
+
+    monkeypatch.setattr(store, "_is_configured", lambda: False)
+    out = store.get_trends()
+    assert out["status"] == "unavailable"
+    assert out["total_count"] == 0
+    assert out["by_scam_type"] == {}
+    assert out["by_risk_bucket"] == {"low": 0, "medium": 0, "high": 0}
+    assert out["by_language"] == {}
+    assert out["last_7_days"] == []
+
+
+def test_get_trends_aggregation_on_sample_rows():
+    """aggregate() computes the expected counts from a list of anonymized rows."""
+    from datetime import datetime, timezone
+    from services.store import aggregate
+
+    today_iso = datetime.now(timezone.utc).isoformat()
+    rows = [
+        {"scam_type": "digital_arrest", "risk_bucket": "high",   "detected_language": "en", "decision_source": "rules+llm+rag", "fallback_used": False, "created_at": today_iso},
+        {"scam_type": "digital_arrest", "risk_bucket": "high",   "detected_language": "hi", "decision_source": "rules+llm+rag", "fallback_used": False, "created_at": today_iso},
+        {"scam_type": "kyc_bank",       "risk_bucket": "high",   "detected_language": "te", "decision_source": "rules+llm+rag", "fallback_used": False, "created_at": today_iso},
+        {"scam_type": "likely_safe",    "risk_bucket": "low",    "detected_language": "en", "decision_source": "rules+llm",     "fallback_used": False, "created_at": today_iso},
+        {"scam_type": "other",          "risk_bucket": "medium", "detected_language": "en", "decision_source": "rules_fallback","fallback_used": True,  "created_at": today_iso},
+    ]
+    out = aggregate(rows)
+    assert out["status"] == "ok"
+    assert out["total_count"] == 5
+    assert out["by_scam_type"]["digital_arrest"] == 2
+    assert out["by_scam_type"]["kyc_bank"] == 1
+    assert out["by_risk_bucket"] == {"low": 1, "medium": 1, "high": 3}
+    assert out["by_language"] == {"en": 3, "hi": 1, "te": 1}
+    assert out["by_decision_source"]["rules+llm+rag"] == 3
+    assert out["fallback_used_count"] == 1
+    assert len(out["last_7_days"]) == 7
+    # The five sample rows all land in today's bucket.
+    assert out["last_7_days"][-1]["count"] == 5
+
+
+def test_get_trends_route_returns_valid_shape_when_store_down(monkeypatch):
+    """GET /trends never 500s even if the underlying store is unreachable."""
+    from services import store as store_module
+    # Simulate the store being unconfigured -> get_trends returns 'unavailable'.
+    monkeypatch.setattr(store_module, "_is_configured", lambda: False)
+    r = client.get("/trends")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "unavailable"
+    assert body["total_count"] == 0
+    assert "by_scam_type" in body
+    assert "last_7_days" in body
