@@ -40,25 +40,65 @@ system:
 - Network identity: no IP address, no `User-Agent`, no headers.
 - The raw risk score (0–100). Only the `low` / `medium` / `high` bucket.
 
-## Why (the pitch line)
+## Why (DPDP alignment)
 
-**Aligned with India's DPDP Act §5 (purpose limitation) and §8(3) (data
-minimization).** We collect only the minimum necessary to compute local scam
-trends, and the schema itself makes it impossible to reconstruct an individual
-message from a row.
+The five-field whitelist is not a happy accident — it is a deliberate design
+choice mapped to India's Digital Personal Data Protection Act, 2023:
 
-## Verification
+- **§4 lawful purpose / §5 purpose limitation.** Kavach's sole purpose is to
+  detect scam attempts on messages the user hands to us. The `signals` row
+  serves *aggregate trend intelligence* (which scam categories are trending
+  in which languages) — nothing else. There is no cross-purpose profile,
+  no ad-targeting field, no linkage to other systems.
+- **§8(3) accuracy & minimization.** The stored fields are the coarsest
+  categorical labels that still give us a useful dashboard. Notably we
+  store a `risk_bucket` (low/medium/high), not the raw risk score, and
+  we don't store the raw message that would let us re-derive one.
+- **Data-principal identifiability.** DPDP defines personal data as data
+  relating to an *identifiable* individual. The `signals` row contains no
+  identifier: no IP, no session cookie, no phone number, no user ID, no
+  device fingerprint. Every row is symmetric with every other row of the
+  same shape; a subpoena directed at Kavach's telemetry would return
+  category counts, not a person.
+- **No cross-border transfer of personal data.** Only anonymized counts
+  ever leave the backend; the actual message text never leaves the request
+  path.
 
-You can verify these guarantees three ways:
+## Retention
 
-1. **Read `to_anonymized_record`** — one file, 60 lines, single whitelist
-   constant.
-2. **Run the test suite** — `test_to_anonymized_record_strips_everything_but_whitelist`
-   explicitly asserts that user phrases, URLs, phone numbers, and derived
-   text cannot appear in the record even when the input verdict has them.
-3. **Inspect the DDL** — the `signals` table has exactly six columns (five
-   whitelisted fields plus `created_at`). There is no free-form `payload`
-   column, no `metadata` JSON blob, no `raw_text` column.
+- The `signals` table is **append-only aggregate telemetry**. Rows are
+  retained for **rolling 30 days** for the trends dashboard, then may be
+  aggregated further (weekly rollup) or deleted. The `/trends` endpoint
+  reads only the last 30 days by default.
+- Since a row is not identifiable, there is no data-subject deletion request
+  Kavach can meaningfully honor — you cannot ask us to "delete your row"
+  because we do not know which row is yours. This is by design.
+- If a reviewer wants to see this bounded in code: `backend/services/store.py`
+  → `_fetch_rows()` sets `created_at >= now() - 30 days` in the PostgREST
+  query.
+
+## How a reviewer can verify
+
+Four independent ways to check these claims — no need to trust the docs:
+
+1. **Read `backend/core/privacy.py`** — one file, ~60 lines, single whitelist
+   constant `_WHITELISTED_KEYS = {"scam_type", "risk_bucket",
+   "detected_language", "decision_source", "fallback_used"}`. Everything the
+   verdict carries beyond that is dropped by `to_anonymized_record()`.
+2. **Run the test suite** —
+   `test_to_anonymized_record_strips_everything_but_whitelist` explicitly
+   feeds a verdict containing user phrases, URLs, phone numbers, and derived
+   text into `to_anonymized_record`, then asserts none of those strings
+   appear anywhere in the returned dict.
+3. **Inspect the DDL** — the `signals` table (`deploy/supabase.sql`) has
+   exactly six columns: the five whitelisted fields plus `created_at`.
+   There is no free-form `payload` column, no `metadata` JSON blob, no
+   `raw_text` column. The schema itself makes leakage impossible.
+4. **Query Supabase directly** — with the `service_role` key, run
+   `select * from signals` in the Supabase SQL editor. The rows have the
+   six columns above and nothing else. Nowhere in that table is the string
+   `"CBI"`, `"1930"`, `"Aadhaar"`, `+91<any-number>`, or any URL from any
+   message any user ever analyzed.
 
 ## Failure mode
 
