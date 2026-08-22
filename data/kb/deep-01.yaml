@@ -1,0 +1,25 @@
+id: DEEP-01
+category: deepfake_voice
+title: Cloned-voice family emergency scam
+indicators:
+- voice message
+- voice note
+- mummy
+- papa
+- beta
+- son
+- daughter
+- kidnap
+- accident
+- hospital
+- urgent send money
+- do not call police
+- do not tell papa
+why_scam: Publicly-available voice samples can be cloned in seconds. The urgency +
+  secrecy is engineered so you don't verify with the real person.
+safe_action: Hang up. Call the family member back on their known number BEFORE sending
+  any money.
+source: I4C advisory on AI voice-cloning fraud (2024)
+languages:
+- en
+- hi

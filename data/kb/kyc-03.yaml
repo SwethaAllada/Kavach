@@ -1,0 +1,23 @@
+id: KYC-03
+category: kyc_bank
+title: Phishing link disguised as bank domain
+indicators:
+- sbi-kyc
+- hdfc-verify
+- icici-aadhar
+- yesbank-panlink
+- axis-kyc-portal
+- .xyz
+- .info
+- .online-pay
+- click here to update
+- click the link to verify
+why_scam: Real banks use their official domains (sbi.co.in, hdfcbank.com, …). Any
+  KYC 'update' link on a .xyz / .info / lookalike domain is phishing.
+safe_action: Do not click. Type the bank's official URL into your browser and check
+  status there.
+source: CERT-In phishing advisories
+languages:
+- en
+- hi
+- te

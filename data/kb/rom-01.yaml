@@ -1,0 +1,24 @@
+id: ROM-01
+category: romance
+title: Romance scam with 'stuck at airport / gift held' hook
+indicators:
+- i love you
+- my love
+- darling
+- honey
+- stuck at airport
+- airport customs
+- gift is held
+- gift customs
+- release the gift
+- us army
+- deployed
+- cannot access my account
+- please send
+why_scam: The 'partner' has never met you in person and always has an emergency requiring
+  a money transfer to a third-party UPI or bank account.
+safe_action: Do not send money to someone you have not met in person. Report the profile
+  on the platform where you met.
+source: I4C romance scam advisory
+languages:
+- en

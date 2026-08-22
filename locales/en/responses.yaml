@@ -1,0 +1,24 @@
+language: en
+
+# User-facing verdict strings. Keys are stable identifiers consumed by the
+# engine/fusion layer; values are the strings shown to the user.
+verdicts:
+  scam: "This message shows strong signs of a scam. Do not click any links, share OTPs, or make any payment."
+  likely_scam: "This message looks suspicious and matches common scam patterns. Proceed with caution and verify independently before acting."
+  unclear: "We could not confidently classify this message. Avoid sharing personal details or OTPs until you verify the sender."
+  likely_legit: "This message does not show strong scam indicators, but always verify sender identity for anything involving money or personal data."
+  legit: "This message does not show signs of a scam based on our checks."
+
+  no_action: "No immediate action needed."
+  click_link_warning: "Do not click the link in this message."
+  call_back_warning: "Do not call back the number in this message. Verify through official channels instead."
+  share_credential_warning: "Never share OTPs, passwords, or PINs with anyone, including people claiming to be bank or government officials."
+  make_payment_warning: "Do not make any payment based on this message."
+  install_app_warning: "Do not install any app linked in this message."
+
+  report_prompt: "You can report this message to cybercrime.gov.in or call 1930."
+  verify_prompt: "Verify independently using the official app or website, not any number or link from this message."
+  low_confidence_prompt: "If unsure, do not respond and consult someone you trust before acting."
+
+  digital_arrest_note: "No Indian law enforcement agency arrests anyone over a video call or demands money for 'verification'."
+  kyc_note: "Banks and telecom operators never ask you to update KYC by clicking a link sent over SMS or WhatsApp."

@@ -1,0 +1,62 @@
+language: en
+
+# Scam keyword families, grouped by theme. Each family is a flat list of
+# phrases/tokens (case-insensitive) associated with that scam pattern.
+# These are additive data for the new engine/ path — backend/core's existing
+# rule matching in backend/core is untouched and keeps using its own lists.
+families:
+  digital_arrest:
+    - digital arrest
+    - cbi officer
+    - ed officer
+    - cyber cell
+    - stay on video call
+    - do not disconnect
+    - arrest warrant
+    - narcotics parcel
+
+  govt_impersonation:
+    - income tax notice
+    - trai disconnection
+    - sim card block
+    - aadhaar suspended
+    - pan card blocked
+    - court notice
+
+  investment_trading:
+    - guaranteed returns
+    - guaranteed profit
+    - vip trading group
+    - double your money
+    - stock tip
+    - sebi registered advisor
+
+  kyc_payment:
+    - kyc update
+    - kyc expire
+    - account will be blocked
+    - verify your account
+    - update pan
+
+  fake_customer_care:
+    - customer care number
+    - refund process
+    - courier delivery failed
+    - re-kyc
+
+  phishing_link:
+    - click this link
+    - verify now
+    - claim your prize
+    - update your details here
+
+  job_lottery:
+    - work from home job
+    - lottery winner
+    - claim your prize money
+    - task based earning
+
+  otp_share:
+    - share the otp
+    - otp for verification
+    - do not share otp with anyone else

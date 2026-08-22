@@ -1,0 +1,16 @@
+id: COU-02
+category: courier_parcel
+title: '''Redelivery fee'' India Post phishing'
+indicators:
+- attempted delivery failed
+- reschedule delivery
+- redelivery charge
+- redelivery fee
+- indiapost-track
+- india-post-track
+why_scam: India Post never charges a small 'redelivery fee' via a random SMS link.
+  These links harvest card details or install malware.
+safe_action: Ignore the SMS. If expecting a parcel, use the tracking number on indiapost.gov.in.
+source: CERT-In smishing advisory
+languages:
+- en

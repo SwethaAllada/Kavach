@@ -1,0 +1,24 @@
+id: LOAN-01
+category: loan_app
+title: Instant loan with upfront processing fee
+indicators:
+- instant loan
+- loan approved
+- pre-approved loan
+- pre approved loan
+- no documents
+- no cibil
+- processing fee
+- advance processing
+- तुरंत लोन
+- వెంటనే రుణం
+- ప్రాసెసింగ్ ఫీజు
+why_scam: RBI-registered lenders never ask for an advance processing fee via UPI before
+  releasing a loan. That fee vanishes; the loan never arrives.
+safe_action: Verify the lender on the RBI website. Never pay upfront to receive a
+  loan.
+source: RBI list of registered NBFCs
+languages:
+- en
+- hi
+- te

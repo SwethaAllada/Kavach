@@ -1,0 +1,26 @@
+id: DA-02
+category: digital_arrest
+title: Fake CBI/ED/Cyber-Cell officer video call
+indicators:
+- cbi officer
+- ed officer
+- cyber cell
+- case has been filed
+- warrant will be issued
+- arrest warrant
+- skype
+- money laundering
+- hawala
+- मुकदमा दर्ज
+- वारंट
+- మీపై కేసు
+- అరెస్ట్ వారెంట్
+why_scam: Real agencies serve notices in writing under CrPC 41A, never via WhatsApp,
+  Skype or video call. Suspects are never 'digitally arrested'.
+safe_action: Do not join the call. Do not transfer any amount. Verify with the local
+  police station in person.
+source: CBI public notice on impersonation calls (2024)
+languages:
+- en
+- hi
+- te

@@ -1,0 +1,29 @@
+id: COU-01
+category: courier_parcel
+title: FedEx/DHL 'parcel held at customs' scam
+indicators:
+- fedex
+- dhl
+- blue dart
+- indian post
+- india post
+- parcel held
+- parcel is on hold
+- held at customs
+- customs clearance
+- customs duty
+- clearance fee
+- पार्सल रोका
+- कस्टम शुल्क
+- పార్సెల్ ఆపబడింది
+- కస్టమ్స్
+why_scam: Courier companies never call to demand cash for customs clearance. Customs
+  duties are paid to the delivery agent or the courier's official portal, never via
+  random UPI IDs.
+safe_action: Ignore. If you're expecting a parcel, log into the courier's official
+  app or website to check status.
+source: I4C advisory on 'fake FedEx call' scam
+languages:
+- en
+- hi
+- te

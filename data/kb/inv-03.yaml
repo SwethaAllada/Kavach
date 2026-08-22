@@ -1,0 +1,19 @@
+id: INV-03
+category: investment_stock
+title: Impersonated foreign-fund / celebrity trading platform
+indicators:
+- warren buffet
+- adani stock plan
+- employee stock plan
+- 3x return
+- 5x return
+- 10x return
+- trading platform
+- deposit today withdraw tomorrow
+why_scam: These use famous names to signal legitimacy but the 'platform' is a fake
+  app or website that shows fictitious profits and blocks all withdrawals.
+safe_action: Do not deposit. Verify any platform on sebi.gov.in. Withdraw immediately
+  if you already deposited.
+source: SEBI investor caution list
+languages:
+- en

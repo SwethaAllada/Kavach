@@ -1,0 +1,27 @@
+id: JOB-01
+category: job_task
+title: Like/rate task scam with 'prepaid task' upsell
+indicators:
+- part-time job
+- part time job
+- work from home
+- rating task
+- like and subscribe
+- youtube task
+- hotel booking task
+- prepaid task
+- earn rs
+- daily earnings
+- telegram task
+- घर बैठे कमाई
+- ఇంటి నుండి పార్ట్
+- టెలిగ్రామ్ గ్రూప్
+why_scam: The first small payouts are bait. Once you're hooked, the 'prepaid task'
+  step asks you to deposit money that is never returned.
+safe_action: No real employer asks you to pay in order to earn. Delete the message
+  and leave the group.
+source: I4C advisory on task-based fraud
+languages:
+- en
+- hi
+- te

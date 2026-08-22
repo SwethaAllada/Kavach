@@ -1,0 +1,28 @@
+id: KYC-01
+category: kyc_bank
+title: '''Account will be blocked'' KYC / PAN link scam'
+indicators:
+- account will be blocked
+- account will be freezed
+- account will be suspended
+- kyc pending
+- kyc update
+- complete kyc
+- pan not linked
+- pan link pending
+- aadhaar link
+- netbanking will be suspended
+- खाता बंद हो जाएगा
+- केवाईसी
+- ఖాతా బ్లాక్
+- ఖాతా మూసివేయబడుతుంది
+- కేవైసీ పెండింగ్
+why_scam: Real banks never send blocking warnings via SMS/WhatsApp links and never
+  ask you to complete KYC through a random URL or by sharing OTP.
+safe_action: Do not click the link. Call the number on the back of your card or visit
+  your branch to check KYC status.
+source: RBI Sachet portal — beware of KYC fraud
+languages:
+- en
+- hi
+- te

@@ -1,0 +1,19 @@
+id: GEN-CRED-01
+category: other
+title: Any unsolicited request for OTP/password/PIN
+indicators:
+- share the otp
+- share otp
+- share your password
+- one time password
+- read out the code
+- ओटीपी बताएं
+- ఓటీపీ చెప్పండి
+why_scam: OTP, password and PIN exist specifically because they must NEVER be shared.
+  Anyone asking for one is impersonating a real service.
+safe_action: Do not share. Real staff never need to ask.
+source: RBI 'never share OTP' campaign
+languages:
+- en
+- hi
+- te

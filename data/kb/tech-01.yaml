@@ -1,0 +1,23 @@
+id: TECH-01
+category: tech_support
+title: Fake Microsoft/Apple tech-support with remote-access
+indicators:
+- microsoft support
+- microsoft security
+- apple icloud
+- your computer is infected
+- your pc is infected
+- your device is infected
+- virus detected
+- windows license
+- call our support
+- anydesk
+- teamviewer
+- remote access
+why_scam: Microsoft and Apple never call end-users about infections. Installing AnyDesk/TeamViewer
+  for a caller hands them your bank sessions.
+safe_action: Do not call the number. Do not install any remote-access tool for a stranger.
+  Uninstall AnyDesk/TeamViewer if you already did.
+source: Microsoft consumer advisory on tech-support scams
+languages:
+- en

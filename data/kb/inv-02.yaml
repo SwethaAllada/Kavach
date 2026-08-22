@@ -1,0 +1,21 @@
+id: INV-02
+category: investment_stock
+title: Fake IPO/pre-IPO allotment scam
+indicators:
+- ipo allotment
+- pre-ipo
+- pre ipo
+- confirmed for you
+- booking amount
+- allocation window
+- reserve your allocation
+- आईपीओ आवंटन
+- ఐపీవో కేటాయింపు
+why_scam: IPO allotment is done by the registrar based on bids; no one 'confirms'
+  allotment in advance in return for a booking amount.
+safe_action: Only apply via ASBA through your bank/broker. Delete these messages.
+source: SEBI IPO investor guide
+languages:
+- en
+- hi
+- te

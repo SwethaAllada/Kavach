@@ -1,0 +1,22 @@
+id: GEN-URG-01
+category: other
+title: Extreme urgency + secrecy signal
+indicators:
+- within 24 hours
+- expires today
+- last chance
+- final warning
+- act immediately
+- immediate action required
+- तुरंत
+- వెంటనే
+- ఇప్పుడే
+why_scam: Legitimate institutions give reasonable timeframes; extreme urgency is engineered
+  to stop you thinking or verifying.
+safe_action: Pause. Any request that pressures you to act 'in the next 10 minutes'
+  deserves a call to a trusted person before you act.
+source: I4C general fraud-awareness note
+languages:
+- en
+- hi
+- te

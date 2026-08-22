@@ -1,0 +1,17 @@
+id: TECH-02
+category: tech_support
+title: '''Verification code we send'' account-takeover trick'
+indicators:
+- share verification code
+- read out the code we sent
+- code we just sent
+- share the code
+- reset access
+- recover your account
+why_scam: The 'code we sent' is actually your own password-reset code. Sharing it
+  hands the attacker your account.
+safe_action: Never read out a code that arrived on your phone to a caller. Real support
+  never asks for it.
+source: Google/Apple account security guidelines
+languages:
+- en

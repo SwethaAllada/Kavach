@@ -1,0 +1,20 @@
+# Schema contract for every locale under locales/<code>/.
+#
+# Each locale directory MUST contain the files and top-level keys listed here.
+# backend/tests validates every locale against this schema at test time, so
+# adding a new language is a pure data change: drop a directory in, no code
+# changes required.
+#
+# code: the locale directory name (ISO 639-1, e.g. "en", "hi", "te")
+
+files:
+  lexicon.yaml:
+    required_keys:
+      - language          # ISO 639-1 code, must match the directory name
+      - families          # dict[family_name -> list[str]] of scam keyword families
+  responses.yaml:
+    required_keys:
+      - language           # ISO 639-1 code, must match the directory name
+      - verdicts            # dict[verdict_key -> str] user-facing verdict strings
+                             # required verdict_key entries:
+                             #   scam, likely_scam, unclear, likely_legit, legit

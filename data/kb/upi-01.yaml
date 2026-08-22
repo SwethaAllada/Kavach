@@ -1,0 +1,24 @@
+id: UPI-01
+category: upi_collect_request
+title: '''Wrong transfer, please refund'' UPI collect scam'
+indicators:
+- sent by mistake
+- wrong transfer
+- refund request
+- approve the request
+- please approve
+- collect request
+- scan this qr
+- scan qr to receive
+- enter your upi pin
+- गलती से भेजा
+- రిఫండ్ అభ్యర్థన
+why_scam: You never enter a UPI PIN to RECEIVE money. Approving a 'collect request'
+  or scanning a QR to 'get a refund' actually SENDS money out of your account.
+safe_action: Reject the request. Only enter a UPI PIN when you are paying, never when
+  receiving.
+source: NPCI UPI safety guidelines
+languages:
+- en
+- hi
+- te

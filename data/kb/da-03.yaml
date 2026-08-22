@@ -1,0 +1,20 @@
+id: DA-03
+category: digital_arrest
+title: '''Do not tell family, stay isolated'' pressure pattern'
+indicators:
+- do not inform family
+- do not tell your family
+- keep this confidential
+- do not disconnect the call
+- stay on the line
+- किसी को मत बताना
+- ఎవరికీ చెప్పకండి
+why_scam: Isolating the victim from family/friends is the single most reliable marker
+  of a digital-arrest or similar high-pressure fraud.
+safe_action: The moment someone tells you not to speak to your family, HANG UP. Call
+  a family member.
+source: MHA/I4C digital arrest advisory (2024)
+languages:
+- en
+- hi
+- te

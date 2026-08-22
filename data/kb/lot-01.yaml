@@ -1,0 +1,27 @@
+id: LOT-01
+category: lottery_prize
+title: KBC / Jio / Amazon lottery-winner scam
+indicators:
+- you have won
+- you won
+- lottery
+- lucky draw
+- kbc
+- kbc lottery
+- prize
+- prize money
+- iphone winner
+- claim your prize
+- processing fee
+- gst charges
+- आपने जीता
+- లాటరీ గెలిచారు
+- బహుమతి
+why_scam: You cannot win a lottery you never entered. Real prizes never require you
+  to pay 'processing fees' or 'GST' upfront to receive them.
+safe_action: Ignore. Do not share Aadhaar/PAN or pay any fee. Report to 1930.
+source: I4C consumer alert on lottery frauds
+languages:
+- en
+- hi
+- te

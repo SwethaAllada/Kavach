@@ -1,0 +1,17 @@
+id: UPI-02
+category: upi_collect_request
+title: OLX/marketplace 'send you advance' payment trick
+indicators:
+- olx buyer
+- want to buy
+- sending token
+- sending advance
+- accept the payment request
+- approve to receive
+why_scam: The 'buyer' sends a UPI collect request framed as an advance. Approving
+  it debits your account instead of crediting it.
+safe_action: Meet marketplace buyers in person. Only accept payment as a real credit
+  into your account, not via a collect request you approve.
+source: OLX safety centre / NPCI
+languages:
+- en

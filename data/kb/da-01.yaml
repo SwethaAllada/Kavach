@@ -1,0 +1,31 @@
+id: DA-01
+category: digital_arrest
+title: Courier parcel → CBI/Customs digital arrest
+indicators:
+- parcel in your name
+- parcel with your aadhaar
+- illegal items
+- narcotics
+- cbi
+- customs
+- stay on video call
+- do not tell anyone
+- do not disconnect
+- transfer for verification
+- verification account
+- digital arrest
+- आपके नाम पर पार्सल
+- अवैध सामान
+- गिरफ्तार
+- डिजिटल अरेस्ट
+- మీ పేరుపై పార్సెల్
+- అక్రమ వస్తువులు
+- డిజిటల్ అరెస్ట్
+why_scam: No Indian agency arrests over a video call, holds you on Skype, or asks
+  you to transfer money to a 'verification account'. RBI and courts have no such account.
+safe_action: Hang up immediately. Never pay or share OTP. Report to 1930 or cybercrime.gov.in.
+source: MHA / I4C digital arrest advisory (2024)
+languages:
+- en
+- hi
+- te

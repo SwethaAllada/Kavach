@@ -1,0 +1,24 @@
+id: KYC-02
+category: kyc_bank
+title: OTP / CVV / debit card details phishing
+indicators:
+- share otp
+- share the otp
+- share your otp
+- share cvv
+- share pin
+- debit card number
+- verify your account
+- reactivate
+- ओटीपी साझा
+- ఓటీపీ షేర్
+- ఓటీపీ పంపండి
+why_scam: No bank, RBI, or payment app ever needs your OTP, PIN or CVV. Sharing these
+  transfers money OUT of your account, not in.
+safe_action: Never share OTP/PIN/CVV. If you already did, call your bank's fraud helpline
+  and block the card immediately.
+source: RBI 'Be(a)ware' consumer education booklet
+languages:
+- en
+- hi
+- te
