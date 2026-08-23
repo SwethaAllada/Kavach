@@ -6,31 +6,34 @@ import { analyze, analyzeImage, ApiError } from '../lib/api'
 const EXAMPLES = [
   {
     id: 'en_digital_arrest',
-    label: 'English • Digital Arrest',
+    label: 'Digital Arrest (EN)',
     text:
-      "This is CBI. A parcel with your Aadhaar has illegal items. Stay on this " +
-      "video call, do not tell anyone, and transfer Rs 2,00,000 to this " +
-      "verification account. Contact +919812345678.",
+      "This is CBI Cyber Cell. A parcel in your name contains illegal items. " +
+      "A case has been filed against you. Do not tell anyone. Transfer Rs 2,00,000 " +
+      "to this verification account to clear your name.",
   },
   {
-    id: 'hi_scam',
-    label: 'हिन्दी • Scam',
+    id: 'hi_investment_scam',
+    label: 'Investment Scam (हिन्दी)',
     text:
-      "मैं CBI से बोल रहा हूं। आपके नाम पर मुकदमा दर्ज है। तुरंत इस Skype कॉल पर आएं, " +
-      "किसी को मत बताना, अन्यथा गिरफ्तार वारंट जारी होगा।",
+      "नमस्ते! हमारे VIP स्टॉक ग्रुप में जुड़ें और 300% रिटर्न पाएं। " +
+      "आज का guaranteed multibagger tip सिर्फ 10 मिनट में बंद होगा। " +
+      "अभी ₹50,000 जमा करें। बैंक को मत बताना।",
   },
   {
-    id: 'te_scam',
-    label: 'తెలుగు • Scam',
+    id: 'te_kyc_scam',
+    label: 'KYC Scam (తెలుగు)',
     text:
-      "మీ SBI ఖాతా బ్లాక్ అవుతుంది. KYC అప్‌డేట్ కోసం OTP వెంటనే షేర్ చేయండి. " +
-      "లేకపోతే ఖాతా మూసివేయబడుతుంది. https://sbi-kyc-verify.co.in",
+      "ప్రియమైన కస్టమర్, మీ SBI ఖాతా ఈరోజు బ్లాక్ అవుతుంది. " +
+      "మీ KYC అప్‌డేట్ కాలేదు. వెంటనే ఈ లింక్‌పై క్లిక్ చేసి మీ OTP " +
+      "మరియు ఆధార్ నంబర్ నమోదు చేయండి: http://sbi-kyc-update.link",
   },
   {
     id: 'legit_otp',
-    label: 'English • Legit OTP',
+    label: 'Legit OTP',
     text:
-      "Your OTP for HDFC Bank is 483920. Do not share it with anyone. Valid for 10 minutes.",
+      "Your OTP for HDFC Bank transaction is 483920. Do not share this OTP " +
+      "with anyone. Valid for 10 minutes. If not initiated by you, call 1800-258-3838.",
   },
 ]
 
@@ -69,7 +72,7 @@ function TextTab({ loading, onAnalyze }) {
         onChange={(e) => setText(e.target.value)}
         rows={6}
         disabled={loading}
-        placeholder="Paste a suspicious call, SMS, or WhatsApp message here…"
+        placeholder="Paste a suspicious SMS or WhatsApp message here…"
         aria-label="Suspicious message"
       />
 
@@ -297,7 +300,7 @@ export default function AnalyzePanel({ onResult, onLoadingChange }) {
     <section className="card analyze" aria-label="Analyze a message">
       <h2 className="card-title">Analyze a message</h2>
       <p className="card-subtitle">
-        Paste a suspicious call, SMS, or WhatsApp message, or upload a screenshot.
+        Paste a suspicious SMS or WhatsApp message, or upload a screenshot.
         We'll check it in seconds — works in English, हिन्दी, తెలుగు, and more.
       </p>
 

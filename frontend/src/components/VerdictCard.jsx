@@ -121,9 +121,14 @@ export default function VerdictCard({ verdict }) {
                   {m.source && <div className="citation-source">Source: {m.source}</div>}
                   {m.matched_indicators && m.matched_indicators.length > 0 && (
                     <div className="citation-indicators">
-                      {m.matched_indicators.map((phrase, j) => (
+                      {m.matched_indicators.slice(0, 3).map((phrase, j) => (
                         <span className="ind" key={j} lang={detected_language}>{phrase}</span>
                       ))}
+                      {m.matched_indicators.length > 3 && (
+                        <span className="ind ind-more">
+                          +{m.matched_indicators.length - 3} more
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

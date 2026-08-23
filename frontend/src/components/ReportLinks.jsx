@@ -35,7 +35,6 @@ function ChannelRow({ ch }) {
 }
 
 export default function ReportLinks({ report, fromImage = false }) {
-  const [copied, setCopied] = useState(false)
   const [chakshuCopied, setChakshuCopied] = useState(false)
 
   if (!report) return null
@@ -55,27 +54,21 @@ export default function ReportLinks({ report, fromImage = false }) {
 
   const summary = report.prefilled_summary || ''
 
-  async function copySummary() {
-    try {
-      await navigator.clipboard.writeText(summary)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2500)
-    } catch {
-      // Older browsers / permission denied — fallback: select the text.
-      const ta = document.getElementById('kavach-summary-textarea')
-      if (ta) {
-        ta.focus(); ta.select()
-      }
-    }
-  }
-
   async function copyChakshuSummary() {
     try {
       await navigator.clipboard.writeText(summary)
       setChakshuCopied(true)
       setTimeout(() => setChakshuCopied(false), 2500)
     } catch {
-      // Best-effort — the same summary is also copyable from the block above.
+      // Older browsers / permission denied — fallback: select the text.
+      const el = document.getElementById('kavach-chakshu-summary')
+      if (el) {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        const selection = window.getSelection()
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
     }
   }
 
@@ -99,28 +92,6 @@ export default function ReportLinks({ report, fromImage = false }) {
             ))}
           </ul>
         </div>
-
-        {summary && (
-          <div className="summary-block">
-            <label htmlFor="kavach-summary-textarea">Ready-to-paste complaint description</label>
-            <textarea
-              id="kavach-summary-textarea"
-              readOnly
-              value={summary}
-              lang={report.language || 'en'}
-              rows={6}
-            />
-            <div className="copy-row">
-              <button type="button" className="btn btn-secondary" onClick={copySummary}>
-                {copied ? '✓ Copied' : 'Copy summary'}
-              </button>
-              {copied && <span className="copy-status" role="status">Copied to clipboard</span>}
-              <span style={{ fontSize: 'var(--step--1)', color: 'var(--ink-muted)' }}>
-                Fill the [bracketed] fields with your own details before submitting.
-              </span>
-            </div>
-          </div>
-        )}
 
         {report.evidence_checklist && report.evidence_checklist.length > 0 && (
           <div className="evidence">
@@ -160,7 +131,7 @@ export default function ReportLinks({ report, fromImage = false }) {
                 <li>
                   <span className="chakshu-field">Complaint details:</span>
                   <div className="chakshu-summary-copy">
-                    <span className="chakshu-summary-preview">{summary}</span>
+                    <span id="kavach-chakshu-summary" className="chakshu-summary-preview">{summary}</span>
                     <button type="button" className="btn btn-secondary btn-small" onClick={copyChakshuSummary}>
                       {chakshuCopied ? '✓ Copied' : 'Copy'}
                     </button>
