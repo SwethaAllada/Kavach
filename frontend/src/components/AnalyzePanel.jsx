@@ -77,7 +77,7 @@ function TextTab({ loading, onAnalyze }) {
       />
 
       <div className="analyze-actions">
-        <button type="submit" className="btn" disabled={loading || !text.trim()}>
+        <button type="submit" className="btn btn-primary" disabled={loading || !text.trim()}>
           {loading ? (
             <>
               <span className="spinner" aria-hidden="true" />
@@ -222,7 +222,7 @@ function ImageTab({ loading, onAnalyze }) {
       </p>
 
       <div className="analyze-actions">
-        <button type="button" className="btn" disabled={loading || !file} onClick={run}>
+        <button type="button" className="btn btn-primary" disabled={loading || !file} onClick={run}>
           {loading ? (
             <>
               <span className="spinner" aria-hidden="true" />
@@ -297,19 +297,13 @@ export default function AnalyzePanel({ onResult, onLoadingChange }) {
   }, [onResult, onLoadingChange])
 
   return (
-    <section className="card analyze" aria-label="Analyze a message">
-      <h2 className="card-title">Analyze a message</h2>
-      <p className="card-subtitle">
-        Paste a suspicious SMS or WhatsApp message, or upload a screenshot.
-        We'll check it in seconds — works in English, हिन्दी, తెలుగు, and more.
-      </p>
-
-      <div className="mode-toggle" role="tablist" aria-label="Input method">
+    <section className="card card-padded" aria-label="Analyze a message">
+      <div className="analyze-tabs" role="tablist" aria-label="Input method">
         <button
           type="button"
           role="tab"
           aria-selected={mode === 'text'}
-          className={`mode-tab${mode === 'text' ? ' is-active' : ''}`}
+          className={`analyze-tab${mode === 'text' ? ' is-active' : ''}`}
           onClick={() => setMode('text')}
           disabled={loading}
         >
@@ -319,7 +313,7 @@ export default function AnalyzePanel({ onResult, onLoadingChange }) {
           type="button"
           role="tab"
           aria-selected={mode === 'image'}
-          className={`mode-tab${mode === 'image' ? ' is-active' : ''}`}
+          className={`analyze-tab${mode === 'image' ? ' is-active' : ''}`}
           onClick={() => setMode('image')}
           disabled={loading}
         >

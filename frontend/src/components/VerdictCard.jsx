@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react'
 import RiskMeter from './RiskMeter'
 import SignalChips from './SignalChips'
-import ReportLinks from './ReportLinks'
+import ReportSection from './ReportSection'
+import { getLabels } from '../lib/labels'
+import { LANG_STORAGE_KEY } from './NavBar'
 
 // Human-readable labels for scam types from the backend taxonomy.
 const SCAM_LABEL = {
@@ -19,12 +22,36 @@ const SCAM_LABEL = {
   likely_safe: 'Likely Safe',
 }
 
-const LANG_LABEL = { en: 'English', hi: 'हिन्दी (Hindi)', te: 'తెలుగు (Telugu)' }
+const LANG_LABEL = {
+  en: 'English', hi: 'हिन्दी (Hindi)', te: 'తెలుగు (Telugu)', ta: 'தமிழ் (Tamil)',
+  bn: 'বাংলা (Bengali)', mr: 'मराठी (Marathi)', gu: 'ગુજરાતી (Gujarati)',
+  kn: 'ಕನ್ನಡ (Kannada)', ml: 'മലയാളം (Malayalam)', pa: 'ਪੰਜਾਬੀ (Punjabi)',
+}
 
-function riskState(risk, scamType) {
+function riskTone(risk, scamType) {
   if (scamType === 'likely_safe' || risk < 40) return 'safe'
-  if (risk < 70) return 'caution'
+  if (risk < 70) return 'warn'
   return 'danger'
+}
+
+function useUiLang(detectedLanguage) {
+  const [uiLang, setUiLang] = useState(() => {
+    try {
+      return localStorage.getItem(LANG_STORAGE_KEY) || 'auto'
+    } catch {
+      return 'auto'
+    }
+  })
+
+  useEffect(() => {
+    function onChange(e) {
+      setUiLang(e.detail)
+    }
+    window.addEventListener('kavach:ui-lang-change', onChange)
+    return () => window.removeEventListener('kavach:ui-lang-change', onChange)
+  }, [])
+
+  return uiLang === 'auto' ? (detectedLanguage || 'en') : uiLang
 }
 
 export default function VerdictCard({ verdict }) {
@@ -46,31 +73,36 @@ export default function VerdictCard({ verdict }) {
   // ImageVerdict includes extracted_text; a text-path Verdict never does.
   const fromImage = typeof extracted_text === 'string'
 
-  const state = riskState(risk, scam_type)
+  const displayLang = useUiLang(detected_language)
+  const L = getLabels(displayLang)
+
+  const tone = riskTone(risk, scam_type)
+  const isSafe = scam_type === 'likely_safe'
   const scamLabel = SCAM_LABEL[scam_type] || scam_type
   const langLabel = LANG_LABEL[detected_language] || detected_language
 
   return (
     <article className="verdict" aria-live="polite">
-      {/* Hero */}
-      <div className="verdict-hero">
+      <div className={`verdict-header tone-${tone}`}>
         <div>
-          <div className="hero-label">Verdict</div>
-          <div className={`hero-title state-${state}`}>{scamLabel}</div>
-          <div className="lang-chip" title="Language auto-detected by the analyzer">
+          <div className={`verdict-scam-label tone-${tone}`}>{scamLabel}</div>
+          <div className="verdict-lang-chip" title="Language auto-detected by the analyzer">
             <span aria-hidden="true">🌐</span>
             <span>Detected: {langLabel}</span>
           </div>
         </div>
-        <RiskMeter risk={risk} state={state} />
+        {isSafe ? (
+          <span className="safe-check" aria-hidden="true">✓</span>
+        ) : (
+          <RiskMeter risk={risk} tone={tone} />
+        )}
       </div>
 
-      {/* Body */}
       <div className="verdict-body">
         {fromImage && (
-          <div className="section">
-            <h3 className="section-title">Extracted message text</h3>
-            <p className="section-body extracted-text-readback" lang={detected_language}>
+          <div className="verdict-section">
+            <h3 className="section-label">Extracted message text</h3>
+            <p className="extracted-text-readback" lang={detected_language}>
               {extracted_text || '(no text found)'}
             </p>
             {extracted_sender && (
@@ -82,45 +114,50 @@ export default function VerdictCard({ verdict }) {
         )}
 
         {explanation && (
-          <div className="section">
-            <h3 className="section-title">Why this verdict</h3>
-            <p className="section-body" lang={detected_language}>{explanation}</p>
+          <div className="verdict-section">
+            <h3 className="section-label">{L.why}</h3>
+            <p className="verdict-explanation" lang={detected_language}>{explanation}</p>
           </div>
         )}
 
         {recommended_action && (
-          <div className="section">
-            <h3 className="section-title">What to do</h3>
-            <div className={`action-callout state-${state}`} lang={detected_language}>
-              {recommended_action}
+          <div className="verdict-section">
+            <h3 className="section-label">{L.whatToDo}</h3>
+            <div className="action-box" lang={detected_language}>{recommended_action}</div>
+          </div>
+        )}
+
+        {isSafe && (
+          <div className="verdict-section">
+            <div className="safe-reassurance">
+              This message looks safe. If you are still unsure, do not share any OTP, PIN, or
+              money — trust your instincts.
             </div>
           </div>
         )}
 
-        {signals && signals.length > 0 && (
-          <div className="section">
-            <h3 className="section-title">Warning signals detected</h3>
+        {!isSafe && signals && signals.length > 0 && (
+          <div className="verdict-section">
+            <h3 className="section-label">{L.signals}</h3>
             <SignalChips signals={signals} />
           </div>
         )}
 
-        {matched_patterns && matched_patterns.length > 0 && (
-          <div className="section">
-            <h3 className="section-title">
-              Grounded in known scam patterns ({matched_patterns.length})
-            </h3>
-            <div className="citations-grid">
+        {!isSafe && matched_patterns && matched_patterns.length > 0 && (
+          <div className="verdict-section">
+            <details className="patterns-details">
+              <summary>{L.patterns} ({matched_patterns.length})</summary>
               {matched_patterns.map((m, i) => (
-                <div className="citation" key={m.id || i}>
-                  <div className="citation-header">
-                    <div className="citation-title">{m.title}</div>
-                    <div className="citation-sim" title="Match strength">
+                <div className="pattern-card" key={m.id || i}>
+                  <div className="pattern-header">
+                    <div className="pattern-title">{m.title}</div>
+                    <div className="pattern-sim" title="Match strength">
                       {Math.round((m.similarity || 0) * 100)}%
                     </div>
                   </div>
-                  {m.source && <div className="citation-source">Source: {m.source}</div>}
+                  {m.source && <div className="pattern-source">Source: {m.source}</div>}
                   {m.matched_indicators && m.matched_indicators.length > 0 && (
-                    <div className="citation-indicators">
+                    <div className="pattern-indicators">
                       {m.matched_indicators.slice(0, 3).map((phrase, j) => (
                         <span className="ind" key={j} lang={detected_language}>{phrase}</span>
                       ))}
@@ -133,11 +170,15 @@ export default function VerdictCard({ verdict }) {
                   )}
                 </div>
               ))}
-            </div>
+            </details>
           </div>
         )}
 
-        {report && <ReportLinks report={report} fromImage={fromImage} />}
+        {!isSafe && report && (
+          <div className="verdict-section">
+            <ReportSection report={report} fromImage={fromImage} signals={signals} risk={risk} labels={L} />
+          </div>
+        )}
       </div>
     </article>
   )

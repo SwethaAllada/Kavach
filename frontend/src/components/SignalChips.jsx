@@ -1,5 +1,3 @@
-import React from 'react'
-
 // Human-readable labels for signals from the backend.
 const SIGNAL_LABEL = {
   authority: 'Authority impersonation',
@@ -12,7 +10,8 @@ const SIGNAL_LABEL = {
   credential_request: 'Asks for OTP / password',
 }
 
-// Loud (red) vs warn (amber) vs neutral coloring per signal.
+// authority/fear/payment/credential_request = danger tint;
+// isolation/secrecy/urgency/too_good_to_be_true = warn tint.
 const SIGNAL_TONE = {
   authority: 'danger',
   fear: 'danger',
@@ -29,10 +28,10 @@ export default function SignalChips({ signals = [] }) {
   return (
     <ul className="signal-chips">
       {signals.map((s) => {
-        const tone = SIGNAL_TONE[s] || ''
+        const tone = SIGNAL_TONE[s] || 'warn'
         const label = SIGNAL_LABEL[s] || s.replace(/_/g, ' ')
         return (
-          <li key={s} className={`chip${tone ? ' tone-' + tone : ''}`}>
+          <li key={s} className={`signal-chip tone-${tone}`}>
             <span className="dot" aria-hidden="true" />
             <span>{label}</span>
           </li>
