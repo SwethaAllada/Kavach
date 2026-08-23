@@ -23,7 +23,30 @@ from fastapi import APIRouter, Request, Response
 
 from core.config import settings
 from services.classifier import analyze
-from services.whatsapp_format import verdict_to_whatsapp_text
+from services.whatsapp_format import (
+    confirmation_text,
+    education_text,
+    emergency_guidance_text,
+    help_menu_text,
+    alternative_text,
+    match_followup_keyword,
+    reporting_guidance_text,
+    verdict_to_whatsapp_text,
+)
+
+# Stateless follow-up handlers (see whatsapp_format.match_followup_keyword).
+# No verdict/session context is available for these, so each renders a
+# templated reply in English — the WhatsApp follow-up flow is not yet
+# language-aware for these specific replies (only the scam verdict text and
+# menu it follows are).
+_FOLLOWUP_HANDLERS = {
+    "report": lambda: reporting_guidance_text("en"),
+    "emergency": lambda: emergency_guidance_text("en"),
+    "education": lambda: education_text("en"),
+    "confirmation": lambda: confirmation_text("en"),
+    "alternative": lambda: alternative_text("en"),
+    "help": lambda: help_menu_text("en"),
+}
 
 log = logging.getLogger(__name__)
 
@@ -136,6 +159,19 @@ async def webhook(request: Request) -> Response:
     body = str(form.get("Body") or "").strip()
     if not body:
         return _twiml(_FALLBACK_TEXT)
+
+    # Conversational follow-up flow: a bare keyword ("1", "YES", "HELP", ...)
+    # is intercepted BEFORE the classification engine runs, and answered from
+    # a pre-built template — no LLM call. Any other content (including a
+    # keyword plus extra words) falls through to analyze() as a new message.
+    followup_key = match_followup_keyword(body)
+    if followup_key is not None:
+        try:
+            reply = _FOLLOWUP_HANDLERS[followup_key]()
+        except Exception as e:
+            log.exception("webhook: follow-up handler %r failed: %s", followup_key, e)
+            reply = _FALLBACK_TEXT
+        return _twiml(reply)
 
     # SAME engine the web /analyze route uses. This line is the point of the
     # whole phase — no new AI, no new logic, one path.

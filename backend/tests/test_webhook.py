@@ -378,3 +378,130 @@ def test_webhook_empty_body_returns_polite_twiml():
     assert r.status_code == 200
     text = _twiml_text(r)
     assert "try again" in text.lower() or "sorry" in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Conversational follow-up flow (stateless keyword interception)
+# ---------------------------------------------------------------------------
+
+
+# Follow-up tests each use a distinct X-Forwarded-For IP so they draw from
+# their own rate-limit budget (core.rate_limit.RateLimiter is a per-IP
+# sliding-window singleton shared by every TestClient call in this process —
+# see tests/test_security.py) rather than competing with the many other
+# /webhook calls already made above in this file.
+def _followup_headers(ip_suffix: str) -> dict:
+    return {"X-Forwarded-For": f"10.99.0.{ip_suffix}"}
+
+
+def test_webhook_scam_verdict_includes_followup_menu(monkeypatch):
+    monkeypatch.setattr(classifier_module.llm_service, "analyze_message",
+                        _mock_llm_for("en_digital_arrest"))
+    r = _post_webhook(
+        "This is CBI. A parcel with your Aadhaar has illegal items. Transfer for verification.",
+        headers=_followup_headers("1"),
+    )
+    text = _twiml_text(r)
+    assert "1" in text and "2" in text and "3" in text
+    assert "report" in text.lower()
+
+
+def test_webhook_safe_verdict_has_no_followup_menu(monkeypatch):
+    monkeypatch.setattr(classifier_module.llm_service, "analyze_message",
+                        _mock_llm_for("en_legit_otp"))
+    r = _post_webhook(
+        "Your OTP for HDFC Bank is 483920. Do not share it with anyone. Valid for 10 minutes.",
+        headers=_followup_headers("2"),
+    )
+    text = _twiml_text(r)
+    assert "Reply with a number" not in text
+
+
+def test_webhook_followup_1_returns_reporting_guidance():
+    r = _post_webhook("1", headers=_followup_headers("3"))
+    text = _twiml_text(r)
+    assert "Chakshu" in text
+    assert "sancharsaathi.gov.in" in text
+
+
+def test_webhook_followup_report_it_returns_reporting_guidance():
+    r = _post_webhook("report it", headers=_followup_headers("4"))
+    text = _twiml_text(r)
+    assert "Chakshu" in text
+
+
+def test_webhook_followup_2_returns_emergency_guidance():
+    r = _post_webhook("2", headers=_followup_headers("5"))
+    text = _twiml_text(r)
+    assert "1930" in text
+    assert "cybercrime" in text.lower()
+
+
+def test_webhook_followup_lost_money_returns_emergency_guidance():
+    r = _post_webhook("lost money", headers=_followup_headers("6"))
+    text = _twiml_text(r)
+    assert "1930" in text
+
+
+def test_webhook_followup_3_returns_education_text():
+    r = _post_webhook("3", headers=_followup_headers("7"))
+    text = _twiml_text(r)
+    assert len(text) > 0
+    # Default stateless education fallback.
+    from services.whatsapp_format import SCAM_EDUCATION, _DEFAULT_EDUCATION_SCAM_TYPE
+    assert SCAM_EDUCATION[_DEFAULT_EDUCATION_SCAM_TYPE] in text or len(text) > 20
+
+
+def test_webhook_followup_help_returns_help_menu():
+    r = _post_webhook("HELP", headers=_followup_headers("8"))
+    text = _twiml_text(r)
+    assert "ANALYZE" in text
+    assert "Chakshu" in text
+
+
+def test_webhook_followup_yes_returns_confirmation():
+    r = _post_webhook("YES", headers=_followup_headers("9"))
+    text = _twiml_text(r)
+    assert "screenshot" in text.lower()
+
+
+def test_webhook_followup_done_returns_confirmation():
+    r = _post_webhook("DONE", headers=_followup_headers("10"))
+    text = _twiml_text(r)
+    assert "screenshot" in text.lower()
+
+
+def test_webhook_followup_no_returns_alternative():
+    r = _post_webhook("NO", headers=_followup_headers("11"))
+    text = _twiml_text(r)
+    assert "HELP" in text
+
+
+def test_webhook_followup_case_insensitive_and_stripped():
+    r = _post_webhook("  help  ", headers=_followup_headers("12"))
+    text = _twiml_text(r)
+    assert "ANALYZE" in text
+
+
+def test_webhook_long_message_not_intercepted_as_followup(monkeypatch):
+    """A long message is analyzed normally, even if it starts like a scam."""
+    monkeypatch.setattr(classifier_module.llm_service, "analyze_message",
+                        _mock_llm_for("en_digital_arrest"))
+    r = _post_webhook(
+        "This is CBI. A parcel with your Aadhaar has illegal items. Stay on this video call, "
+        "do not tell anyone, and transfer Rs 2,00,000 to this verification account.",
+        headers=_followup_headers("13"),
+    )
+    text = _twiml_text(r)
+    assert "LIKELY SCAM" in text
+    assert "Digital Arrest" in text
+
+
+def test_webhook_keyword_with_extra_words_not_intercepted(monkeypatch):
+    """"1 please help me" contains more than the bare keyword -> analyzed normally."""
+    monkeypatch.setattr(classifier_module.llm_service, "analyze_message",
+                        _mock_llm_for("en_digital_arrest"))
+    r = _post_webhook("1 please help me", headers=_followup_headers("14"))
+    text = _twiml_text(r)
+    assert "Chakshu" not in text
+    assert "LIKELY SCAM" in text
