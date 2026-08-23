@@ -313,6 +313,90 @@ a:hover { color: var(--brand-2); }
 }
 
 /* ---------------------------------------------------------------------------
+   Analyze panel — paste-text / upload-screenshot toggle
+   --------------------------------------------------------------------------- */
+.mode-toggle {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.mode-tab {
+  padding: var(--space-3) var(--space-4);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-weight: 600;
+  font-size: var(--step--1);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.mode-tab:hover { color: var(--ink); }
+.mode-tab.is-active { color: var(--brand); border-bottom-color: var(--brand); }
+.mode-tab:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.image-tab { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 160px;
+  padding: var(--space-5);
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: center;
+}
+.upload-zone:hover, .upload-zone:focus-visible {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+.upload-zone.is-dragover { border-color: var(--brand); background: var(--brand-soft); }
+.upload-zone.has-file { padding: var(--space-3); }
+.upload-icon { font-size: 2rem; }
+.upload-text { font-weight: 600; color: var(--ink); font-size: var(--step--1); }
+.upload-hint { color: var(--ink-muted); font-size: var(--step--2); }
+.upload-preview {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.upload-note { color: var(--ink-muted); font-size: var(--step--1); margin: 0; }
+
+.extracted-block, .extracted-block textarea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.extracted-block label { font-weight: 600; color: var(--ink); font-size: var(--step--1); }
+.extracted-block textarea {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--step--1);
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+  resize: vertical;
+}
+.extracted-sender { font-size: var(--step--1); color: var(--ink-2); }
+.extracted-sender .label { font-weight: 600; color: var(--ink); }
+.extracted-text-readback {
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------------------------
    Verdict card — the hero
    --------------------------------------------------------------------------- */
 .verdict {
@@ -652,6 +736,73 @@ a:hover { color: var(--brand-2); }
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
   flex-wrap: wrap;
 }
+
+/* ---------------------------------------------------------------------------
+   Chakshu "what to fill in" checklist
+   --------------------------------------------------------------------------- */
+.chakshu-block {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.btn-chakshu {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--brand);
+  color: var(--brand-ink);
+  border: 1px solid var(--brand);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-5);
+  font-weight: 600;
+  font-size: var(--step-0);
+  text-decoration: none;
+}
+.btn-chakshu:hover { background: var(--brand-2); border-color: var(--brand-2); }
+.chakshu-lead {
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  font-size: var(--step--1);
+}
+.chakshu-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.chakshu-checklist li {
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.chakshu-field { font-weight: 600; color: var(--ink); margin-right: var(--space-1); }
+.chakshu-summary-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+}
+.chakshu-summary-preview {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--step--2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink-muted);
+}
+.btn-small { padding: var(--space-1) var(--space-3); font-size: var(--step--2); }
 
 /* ---------------------------------------------------------------------------
    Trends placeholder + real dashboard

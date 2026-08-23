@@ -78,6 +78,99 @@ export async function analyze(text, { signal } = {}) {
   return body
 }
 
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png']
+
+/**
+ * Upload a screenshot for OCR + analysis. Returns the ImageVerdict object
+ * (everything analyze() returns, plus extracted_text / extracted_sender).
+ * Throws ApiError with `kind` set for the caller to render a specific
+ * message — including dedicated messages for the 413 (too large) and 422
+ * (couldn't read the image) cases the backend returns.
+ */
+export async function analyzeImage(file, { signal } = {}) {
+  if (!file) {
+    throw new ApiError('Please choose a screenshot to upload.', { kind: 'input' })
+  }
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    throw new ApiError('Please upload a JPEG or PNG screenshot.', { kind: 'input' })
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new ApiError('That image is over 5MB. Please upload a smaller screenshot.', {
+      kind: 'input',
+    })
+  }
+
+  const formData = new FormData()
+  formData.append('image', file)
+
+  let response
+  try {
+    response = await fetch(`${API_BASE}/analyze-image`, {
+      method: 'POST',
+      body: formData,
+      signal,
+    })
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new ApiError('Analysis was cancelled.', { kind: 'abort' })
+    }
+    throw new ApiError(
+      "Couldn't reach the Kavach backend. Is the server running on " + API_BASE + '?',
+      { kind: 'network', detail: err && err.message },
+    )
+  }
+
+  const contentType = response.headers.get('content-type') || ''
+  let body = null
+  if (contentType.includes('application/json')) {
+    try {
+      body = await response.json()
+    } catch (err) {
+      throw new ApiError('The backend returned a malformed response.', {
+        kind: 'parse',
+        status: response.status,
+        detail: err && err.message,
+      })
+    }
+  }
+
+  if (!response.ok) {
+    const detail = (body && (body.detail || body.error || body.message)) || response.statusText
+    if (response.status === 413) {
+      throw new ApiError('That image is over 5MB. Please upload a smaller screenshot.', {
+        kind: 'http', status: 413, detail,
+      })
+    }
+    if (response.status === 422) {
+      throw new ApiError(
+        detail || 'Could not extract text from this image. Please paste the message text directly.',
+        { kind: 'http', status: 422, detail },
+      )
+    }
+    if (response.status === 503) {
+      throw new ApiError(
+        detail || 'Image analysis temporarily unavailable — please paste the message text directly.',
+        { kind: 'http', status: 503, detail },
+      )
+    }
+    throw new ApiError(`Analysis failed (HTTP ${response.status}). ${detail}`, {
+      kind: 'http',
+      status: response.status,
+      detail,
+    })
+  }
+
+  if (!body || typeof body !== 'object' || !body.scam_type) {
+    throw new ApiError('The backend returned an unexpected response.', {
+      kind: 'parse',
+      status: response.status,
+    })
+  }
+
+  return body
+}
+
 /**
  * Fetch the anonymized trends aggregate. Never throws — on any failure
  * returns an empty shape with status="unavailable" so the caller can render

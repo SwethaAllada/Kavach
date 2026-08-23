@@ -39,7 +39,12 @@ export default function VerdictCard({ verdict }) {
     recommended_action,
     detected_language = 'en',
     report,
+    extracted_text,
+    extracted_sender,
   } = verdict
+
+  // ImageVerdict includes extracted_text; a text-path Verdict never does.
+  const fromImage = typeof extracted_text === 'string'
 
   const state = riskState(risk, scam_type)
   const scamLabel = SCAM_LABEL[scam_type] || scam_type
@@ -62,6 +67,20 @@ export default function VerdictCard({ verdict }) {
 
       {/* Body */}
       <div className="verdict-body">
+        {fromImage && (
+          <div className="section">
+            <h3 className="section-title">Extracted message text</h3>
+            <p className="section-body extracted-text-readback" lang={detected_language}>
+              {extracted_text || '(no text found)'}
+            </p>
+            {extracted_sender && (
+              <div className="extracted-sender">
+                <span className="label">Sender detected:</span> <code>{extracted_sender}</code>
+              </div>
+            )}
+          </div>
+        )}
+
         {explanation && (
           <div className="section">
             <h3 className="section-title">Why this verdict</h3>
@@ -113,7 +132,7 @@ export default function VerdictCard({ verdict }) {
           </div>
         )}
 
-        {report && <ReportLinks report={report} />}
+        {report && <ReportLinks report={report} fromImage={fromImage} />}
       </div>
     </article>
   )

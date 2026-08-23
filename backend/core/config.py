@@ -73,6 +73,12 @@ class Settings:
         self.llm_timeout_s: int = _parse_int(os.getenv("KAVACH_LLM_TIMEOUT_S", "20"), 20)
         self.max_retries: int = _parse_int(os.getenv("KAVACH_MAX_RETRIES", "2"), 2)
 
+        # --- Vision (screenshot text extraction, services/vision.py) ------------
+        # A separate, explicitly-named model so a vision-capable model is never
+        # silently swapped for the text model (or vice versa) by editing one
+        # shared setting.
+        self.vision_model: str = os.getenv("KAVACH_VISION_MODEL", "grok-2-vision-latest")
+
         # --- Translation (locales_loader.py) -------------------------------------
         # Runtime translation via deep-translator for languages with no
         # authored locales/<code>/ YAML. On by default; tests set this False

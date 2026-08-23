@@ -9,6 +9,8 @@ const URGENCY_ICON = {
   standard: '📢',
 }
 
+const CHAKSHU_FORM_URL = 'https://sancharsaathi.gov.in/sfc/Home/sfc-complaint.jsp'
+
 function ChannelIcon({ type }) {
   return <span className="channel-icon" aria-hidden="true">{type === 'phone' ? '📞' : '🔗'}</span>
 }
@@ -32,8 +34,9 @@ function ChannelRow({ ch }) {
   )
 }
 
-export default function ReportLinks({ report }) {
+export default function ReportLinks({ report, fromImage = false }) {
   const [copied, setCopied] = useState(false)
+  const [chakshuCopied, setChakshuCopied] = useState(false)
 
   if (!report) return null
 
@@ -63,6 +66,16 @@ export default function ReportLinks({ report }) {
       if (ta) {
         ta.focus(); ta.select()
       }
+    }
+  }
+
+  async function copyChakshuSummary() {
+    try {
+      await navigator.clipboard.writeText(summary)
+      setChakshuCopied(true)
+      setTimeout(() => setChakshuCopied(false), 2500)
+    } catch {
+      // Best-effort — the same summary is also copyable from the block above.
     }
   }
 
@@ -119,6 +132,51 @@ export default function ReportLinks({ report }) {
                 ))}
               </ul>
             </details>
+          </div>
+        )}
+
+        {report.chakshu_category && (
+          <div className="chakshu-block">
+            <h3 className="section-title">Report to Chakshu</h3>
+            <a
+              className="btn btn-chakshu"
+              href={CHAKSHU_FORM_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open Chakshu complaint form ↗
+            </a>
+
+            <p className="chakshu-lead">Use these details to fill in the Chakshu form:</p>
+            <ul className="chakshu-checklist">
+              <li>
+                <span className="chakshu-field">Medium:</span> SMS / WhatsApp — select whichever
+                matches how you received this message.
+              </li>
+              <li>
+                <span className="chakshu-field">Category:</span> {report.chakshu_category}
+              </li>
+              {summary && (
+                <li>
+                  <span className="chakshu-field">Complaint details:</span>
+                  <div className="chakshu-summary-copy">
+                    <span className="chakshu-summary-preview">{summary}</span>
+                    <button type="button" className="btn btn-secondary btn-small" onClick={copyChakshuSummary}>
+                      {chakshuCopied ? '✓ Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </li>
+              )}
+              <li>
+                <span className="chakshu-field">Screenshot:</span>{' '}
+                {fromImage
+                  ? 'Attach the screenshot you uploaded to Kavach.'
+                  : 'Take a screenshot of the suspicious message and attach it.'}
+              </li>
+              <li>
+                <span className="chakshu-field">Date/Time:</span> Note when you received this message.
+              </li>
+            </ul>
           </div>
         )}
       </div>

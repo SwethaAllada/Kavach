@@ -19,3 +19,12 @@ class Verdict(BaseModel):
     recommended_action: str
     report: dict
     detected_language: str
+
+
+class ImageVerdict(Verdict):
+    """Response shape for POST /analyze-image: everything Verdict has, plus
+    the OCR'd message text and sender so the UI can show the user what was
+    actually read from their screenshot before acting on the verdict."""
+
+    extracted_text: str
+    extracted_sender: str | None = None

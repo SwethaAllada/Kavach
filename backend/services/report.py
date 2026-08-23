@@ -50,6 +50,31 @@ _CH_CHAKSHU = {
 
 
 # ---------------------------------------------------------------------------
+# Chakshu form category mapping
+# ---------------------------------------------------------------------------
+
+# Maps each SCAM_TAXONOMY value to the exact category string used by the
+# Chakshu (Sanchar Saathi) complaint form, so the frontend can tell the user
+# exactly which dropdown option to pick. likely_safe maps to None: no
+# Chakshu report is warranted for a message the engine assessed as safe.
+CHAKSHU_CATEGORY_MAP: dict[str, Optional[str]] = {
+    "digital_arrest": "Impersonation as Police, CBI, Customs, Aadhaar, RBI etc",
+    "kyc_bank": "KYC and Payment related to Bank / Electricity / Gas / Insurance etc",
+    "investment_stock": "Investment, Stock Market and Trading",
+    "tech_support": "Fake Customer Care Helpline",
+    "job_task": "Online job / lottery / gifts / loan offers",
+    "lottery_prize": "Online job / lottery / gifts / loan offers",
+    "loan_app": "Online job / lottery / gifts / loan offers",
+    "courier_parcel": "Impersonation as Police, CBI, Customs, Aadhaar, RBI etc",
+    "upi_collect_request": "KYC and Payment related to Bank / Electricity / Gas / Insurance etc",
+    "romance": "Impersonation as a relative / friend",
+    "deepfake_voice": "Impersonation as Police, CBI, Customs, Aadhaar, RBI etc",
+    "other": "Any Other Suspected Fraud",
+    "likely_safe": None,
+}
+
+
+# ---------------------------------------------------------------------------
 # Impersonated-entity heuristic (used for the "claiming to be from X" clause)
 # ---------------------------------------------------------------------------
 
@@ -330,6 +355,7 @@ def build_report(verdict: dict, original_text: str) -> dict:
             "prefilled_summary": summary,
             "evidence_checklist": checklist,
             "language": detected_language,
+            "chakshu_category": CHAKSHU_CATEGORY_MAP.get(scam_type),
         }
     except Exception as e:  # pragma: no cover - defensive
         log.warning("report.build_report failed silently: %s", e)
@@ -347,6 +373,7 @@ def build_report(verdict: dict, original_text: str) -> dict:
             "prefilled_summary": "",
             "evidence_checklist": _EVIDENCE["other"],
             "language": str((verdict or {}).get("detected_language") or "en"),
+            "chakshu_category": CHAKSHU_CATEGORY_MAP.get(scam_type),
         }
 
 

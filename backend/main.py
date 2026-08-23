@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 
 from core.config import settings
 from core.rate_limit import RateLimiter
-from routes import analyze, trends, webhook
+from routes import analyze, image, trends, webhook
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ app.add_middleware(
 # Rate limiter (per-IP sliding window).
 # ---------------------------------------------------------------------------
 _limiter = RateLimiter(max_per_window=settings.rate_limit_per_min)
-_RATE_LIMITED_PATHS = {"/analyze", "/webhook"}
+_RATE_LIMITED_PATHS = {"/analyze", "/analyze-image", "/webhook"}
 
 
 def _client_ip(request: Request) -> str:
@@ -108,6 +108,7 @@ async def security_headers_middleware(request: Request, call_next):
 # Routes
 # ---------------------------------------------------------------------------
 app.include_router(analyze.router)
+app.include_router(image.router)
 app.include_router(webhook.router)
 app.include_router(trends.router)
 
