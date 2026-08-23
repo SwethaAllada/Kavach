@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import RiskMeter from './RiskMeter'
 import SignalChips from './SignalChips'
 import ReportSection from './ReportSection'
-import { getLabels } from '../lib/labels'
-import { LANG_STORAGE_KEY } from './NavBar'
+import { getLabels, LANG_STORAGE_KEY } from '../lib/labels'
 
 // Human-readable labels for scam types from the backend taxonomy.
 const SCAM_LABEL = {
@@ -26,6 +25,10 @@ const LANG_LABEL = {
   en: 'English', hi: 'हिन्दी (Hindi)', te: 'తెలుగు (Telugu)', ta: 'தமிழ் (Tamil)',
   bn: 'বাংলা (Bengali)', mr: 'मराठी (Marathi)', gu: 'ગુજરાતી (Gujarati)',
   kn: 'ಕನ್ನಡ (Kannada)', ml: 'മലയാളം (Malayalam)', pa: 'ਪੰਜਾਬੀ (Punjabi)',
+  or: 'ଓଡ଼ିଆ (Odia)', ur: 'اردو (Urdu)', as: 'অসমীয়া (Assamese)',
+  sa: 'संस्कृतम् (Sanskrit)', mai: 'मैथिली (Maithili)', sat: 'ᱥᱟᱱᱛᱟᱲᱤ (Santali)',
+  ks: 'کٲشُر (Kashmiri)', ne: 'नेपाली (Nepali)', kok: 'कोंकणी (Konkani)',
+  sd: 'سنڌي (Sindhi)',
 }
 
 function riskTone(risk, scamType) {

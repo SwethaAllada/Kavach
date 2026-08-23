@@ -8,10 +8,11 @@ const FAQS = [
   },
   {
     q: 'What languages does Kavach support?',
-    a: 'Kavach understands and responds in 10 Indian languages: English, Hindi, ' +
-      'Telugu, Tamil, Bengali, Marathi, Gujarati, Kannada, Malayalam, and Punjabi. ' +
-      'It also handles mixed-language messages like Hinglish and Tenglish — the ' +
-      'way Indians actually write.',
+    a: 'Kavach understands and responds in 20 Indian languages: English, Hindi, ' +
+      'Telugu, Tamil, Bengali, Marathi, Gujarati, Kannada, Malayalam, Punjabi, ' +
+      'Odia, Urdu, Assamese, Sanskrit, Maithili, Santali, Kashmiri, Nepali, ' +
+      'Konkani, and Sindhi. It also handles mixed-language messages like ' +
+      'Hinglish and Tenglish — the way Indians actually write.',
   },
   {
     q: 'How accurate is Kavach?',

@@ -265,15 +265,6 @@ textarea:focus, input[type="text"]:focus, select:focus {
   gap: 8px;
   flex: 0 0 auto;
 }
-.lang-select {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 13px;
-  background: #ffffff;
-  color: var(--ink);
-  width: auto;
-}
 .emergency-badge {
   display: inline-flex;
   align-items: center;
@@ -350,11 +341,44 @@ textarea:focus, input[type="text"]:focus, select:focus {
 .lang-pill {
   background: var(--blue-light);
   color: var(--blue);
+  border: none;
   border-radius: 999px;
   padding: 4px 12px;
   font-size: var(--text-sm);
   font-weight: 500;
+  font-family: inherit;
 }
+button.lang-pill { cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
+button.lang-pill:hover { background: #dce8fb; }
+button.lang-pill.is-selected {
+  background: var(--blue);
+  color: #ffffff;
+}
+button.lang-pill.is-selected:hover { background: #164a8a; }
+
+/* ---------------------------------------------------------------------------
+   How it works strip (HomePage, shown when no verdict yet)
+   --------------------------------------------------------------------------- */
+.how-it-works {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  .how-it-works { grid-template-columns: 1fr 1fr; }
+}
+.how-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  padding: 20px 16px;
+  text-align: center;
+}
+.how-icon { font-size: 2rem; margin-bottom: 10px; }
+.how-title { font-weight: 700; color: var(--ink); font-size: var(--text-base); margin-bottom: 6px; }
+.how-desc { color: var(--muted); font-size: var(--text-sm); margin: 0; line-height: 1.5; }
 
 /* ---------------------------------------------------------------------------
    Analyze panel

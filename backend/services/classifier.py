@@ -42,7 +42,11 @@ REPORT_CHANNELS = ["1930", "cybercrime.gov.in", "Chakshu"]
 # Simple, dependency-free language detection for the fallback path. One
 # regex per Unicode script block — cheap and works without any external
 # language-detection library. Devanagari is shared by Hindi and Marathi
-# (see _MARATHI_WORDS below for how those two are told apart).
+# (see _MARATHI_WORDS below for how those two are told apart) and also by
+# Sanskrit, Maithili, Kashmiri, Nepali, Konkani, and Sindhi — those six have
+# no word-marker disambiguator (unlike Marathi, there's no validated list of
+# marker words for them) and so auto-detect as "hi" from script alone; they
+# remain reachable via the `hint` parameter (e.g. a UI language selector).
 _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 _TELUGU = re.compile(r"[ఀ-౿]")
 _TAMIL = re.compile(r"[஀-௿]")
@@ -51,6 +55,16 @@ _MALAYALAM = re.compile(r"[ഀ-ൿ]")
 _BENGALI = re.compile(r"[ঀ-৿]")
 _GUJARATI = re.compile(r"[઀-૿]")
 _GURMUKHI = re.compile(r"[਀-੿]")  # Punjabi
+_ORIYA = re.compile(r"[଀-୿]")
+_URDU = re.compile(r"[؀-ۿݐ-ݿ]")  # Arabic + Arabic Supplement blocks
+_OL_CHIKI = re.compile(r"[᱐-᱿]")  # Santali
+
+# Assamese uses ৰ (U+09F0) and ৱ (U+09F1) for RA/WA — code points within the
+# Bengali Unicode block that standard Bengali orthography does not use (it
+# uses U+09B0 for RA instead). This is a genuine script-level distinguisher,
+# not a heuristic — unlike Marathi vs. Hindi, Assamese vs. Bengali can be
+# told apart by character presence alone.
+_ASSAMESE_MARKERS = re.compile(r"[ৰৱ]")
 
 # Marathi shares Devanagari with Hindi, so script alone can't distinguish
 # them. These are common Marathi function words with no equivalent spelling
@@ -73,12 +87,21 @@ def _detect_language(text: str, hint: Optional[str] = None) -> str:
         return "kn"
     if "ml" in SUPPORTED_LANGUAGES and _MALAYALAM.search(text):
         return "ml"
-    if "bn" in SUPPORTED_LANGUAGES and _BENGALI.search(text):
-        return "bn"
     if "gu" in SUPPORTED_LANGUAGES and _GUJARATI.search(text):
         return "gu"
     if "pa" in SUPPORTED_LANGUAGES and _GURMUKHI.search(text):
         return "pa"
+    if "or" in SUPPORTED_LANGUAGES and _ORIYA.search(text):
+        return "or"
+    if "ur" in SUPPORTED_LANGUAGES and _URDU.search(text):
+        return "ur"
+    if "sat" in SUPPORTED_LANGUAGES and _OL_CHIKI.search(text):
+        return "sat"
+    if _BENGALI.search(text):
+        if "as" in SUPPORTED_LANGUAGES and _ASSAMESE_MARKERS.search(text):
+            return "as"
+        if "bn" in SUPPORTED_LANGUAGES:
+            return "bn"
     if _DEVANAGARI.search(text):
         if "mr" in SUPPORTED_LANGUAGES and _MARATHI_WORDS.search(text):
             return "mr"

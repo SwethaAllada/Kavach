@@ -12,12 +12,21 @@ same fix, applied once here instead of in every consumer module.
 Two tiers of language support:
   - YAML-backed (en, hi, te): read directly from locales/<code>/responses.yaml,
     exactly as before. This path is unchanged by the translation feature.
-  - Translate-on-demand (everything else in SUPPORTED_LANGUAGES — ta, kn, ml,
-    bn, mr, gu, pa): the English string is fetched from locales/en/responses.yaml
-    and translated via deep_translator.GoogleTranslator, cached per (lang,
-    path) for the process lifetime so a given string is only translated once.
-    Adding a further language later is a one-line change to
+  - Translate-on-demand (everything else in SUPPORTED_LANGUAGES — 17 more
+    languages as of this writing, see _TRANSLATE_ON_DEMAND_LANGUAGES): the
+    English string is fetched from locales/en/responses.yaml and translated
+    via deep_translator.GoogleTranslator, cached per (lang, path) for the
+    process lifetime so a given string is only translated once. Adding a
+    further language later is a one-line change to
     _TRANSLATE_ON_DEMAND_LANGUAGES — no new YAML required.
+
+    Several of these (sa, mai, ks, ne, kok, sd) are written in Devanagari,
+    same as Hindi — classifier._detect_language cannot tell them apart from
+    Hindi by script alone (Marathi is the only Devanagari-sharing language
+    with a word-marker disambiguator; extending that to 5 more languages
+    would be guesswork without real message samples to validate against).
+    These languages are reachable via the `hint` parameter (e.g. a UI
+    language selector) but will auto-detect as "hi" from raw text.
 
 Public API:
   - SUPPORTED_LANGUAGES: tuple[str, ...] — the ONLY place the supported
@@ -82,13 +91,23 @@ _FALLBACK_LANGUAGE = "en"
 # the English string on demand instead of an authored file. Adding one more
 # is a one-line change here; it does not touch get_string()'s logic.
 _TRANSLATE_ON_DEMAND_LANGUAGES: tuple[str, ...] = (
-    "ta",  # Tamil
-    "kn",  # Kannada
-    "ml",  # Malayalam
-    "bn",  # Bengali
-    "mr",  # Marathi
-    "gu",  # Gujarati
-    "pa",  # Punjabi (Gurmukhi)
+    "ta",   # Tamil
+    "kn",   # Kannada
+    "ml",   # Malayalam
+    "bn",   # Bengali
+    "mr",   # Marathi
+    "gu",   # Gujarati
+    "pa",   # Punjabi (Gurmukhi)
+    "or",   # Odia
+    "ur",   # Urdu
+    "as",   # Assamese
+    "sa",   # Sanskrit
+    "mai",  # Maithili
+    "sat",  # Santali
+    "ks",   # Kashmiri
+    "ne",   # Nepali
+    "kok",  # Konkani
+    "sd",   # Sindhi
 )
 
 # The single source of truth for the supported-language set: YAML-backed
@@ -137,6 +156,18 @@ _translation_cache: dict[tuple[str, tuple[str, ...]], str] = {}
 _BRACKET_PLACEHOLDER_RE = re.compile(r"\[[A-Z0-9 /_-]+\]")
 _FORMAT_PLACEHOLDER_RE = re.compile(r"\{[a-zA-Z_][a-zA-Z0-9_]*\}")
 
+# Our language codes vs. the code deep_translator's GoogleTranslator expects
+# — these differ for a few languages (verified against
+# GoogleTranslator().get_supported_languages(as_dict=True)). Konkani is the
+# one confirmed mismatch: we use "kok" (ISO 639-2, matches SUPPORTED_LANGUAGES
+# and the UI/detection code elsewhere) but GoogleTranslator expects "gom".
+# Santali ("sat") and Kashmiri ("ks") are not in GoogleTranslator's supported
+# list at all as of this writing — _translate_safely's own exception handling
+# already covers that (falls back to English), no mapping can fix it.
+_TRANSLATOR_CODE_OVERRIDES: dict[str, str] = {
+    "kok": "gom",
+}
+
 
 def _find_placeholders(text: str) -> set[str]:
     return set(_BRACKET_PLACEHOLDER_RE.findall(text)) | set(_FORMAT_PLACEHOLDER_RE.findall(text))
@@ -156,7 +187,8 @@ def _translate_safely(english_text: str, target_lang: str) -> str | None:
     try:
         from deep_translator import GoogleTranslator
 
-        translated = GoogleTranslator(source="en", target=target_lang).translate(english_text)
+        translator_lang = _TRANSLATOR_CODE_OVERRIDES.get(target_lang, target_lang)
+        translated = GoogleTranslator(source="en", target=translator_lang).translate(english_text)
         if not isinstance(translated, str) or not translated.strip():
             return None
 

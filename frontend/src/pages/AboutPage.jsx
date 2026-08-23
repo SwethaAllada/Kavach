@@ -5,7 +5,11 @@ const STEPS = [
   { icon: '🛡️', name: 'Guide', desc: 'A concrete next step, plus a ready-to-file report if needed.' },
 ]
 
-const LANGUAGES = ['English', 'हिन्दी', 'తెలుగు', 'தமிழ்', 'বাংলা', 'मराठी', 'ગુજરાતી', 'ಕನ್ನಡ', 'മലയാളം', 'ਪੰਜਾਬੀ']
+const LANGUAGES = [
+  'English', 'हिन्दी', 'తెలుగు', 'தமிழ்', 'বাংলা', 'मराठी', 'ગુજરાતી', 'ಕನ್ನಡ',
+  'മലയാളം', 'ਪੰਜਾਬੀ', 'ଓଡ଼ିଆ', 'اردو', 'অসমীয়া', 'संस्कृतम्', 'मैथिली',
+  'ᱥᱟᱱᱛᱟᱲᱤ', 'کٲشُر', 'नेपाली', 'कोंकणी', 'سنڌي',
+]
 
 export default function AboutPage() {
   return (
@@ -15,7 +19,7 @@ export default function AboutPage() {
         Kavach is a free AI-powered fraud shield built for every Indian citizen.
         Forward any suspicious SMS or WhatsApp message and get an instant, clear
         verdict — what kind of scam it is, why it's suspicious, and exactly what
-        to do next. It works in 10 Indian languages and stores nothing about you.
+        to do next. It works in 20 Indian languages and stores nothing about you.
       </p>
 
       <h2>How it works</h2>

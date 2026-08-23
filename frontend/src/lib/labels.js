@@ -3,6 +3,11 @@
 // VERDICT", etc.) — separate from the backend's own detected_language,
 // which drives the actual explanation/action text content.
 
+// localStorage key the language chips (HomePage) write to and VerdictCard
+// reads from. Shared here (not a component) so both can import it without
+// depending on each other.
+export const LANG_STORAGE_KEY = 'kavach_ui_lang'
+
 export const SECTION_LABELS = {
   en: {
     verdict: 'VERDICT', why: 'WHY THIS VERDICT', whatToDo: 'WHAT TO DO',
