@@ -1,0 +1,11 @@
+language: hi
+
+# NOTE: locales/en/lexicon.yaml's `families` back the unwired backend/engine/
+# scaffolding (see backend/engine/__init__.py), not the live rules engine —
+# the real Hindi keyword patterns are inline in backend/services/rules.py's
+# SCAM_PATTERNS / SIGNAL_PATTERNS. This file exists to satisfy the locale
+# schema (a valid locale needs both files) without inventing family content
+# that nothing in the live request path reads. Populate for real if/when
+# rules.py's patterns move into the locale registry — that migration is out
+# of scope for this task, which only wires responses.yaml consumers.
+families: {}

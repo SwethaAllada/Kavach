@@ -1,6 +1,6 @@
 """Hybrid decision engine: rules + LLM fusion with graceful fallback.
 
-Public API: analyze(text, language=None) -> dict (Verdict-shaped).
+Public API: analyze(text, language=None, sender=None) -> dict (Verdict-shaped).
 Never raises — worst case returns a "unable to analyze, treat with caution"
 Verdict so the request path stays 200.
 """
@@ -12,6 +12,7 @@ import re
 from typing import Optional
 
 from core import privacy as privacy_module
+from core.locales_loader import SUPPORTED_LANGUAGES, get_string
 from services import llm as llm_service
 from services import rag as rag_service
 from services import report as report_service
@@ -33,209 +34,56 @@ log = logging.getLogger(__name__)
 REPORT_CHANNELS = ["1930", "cybercrime.gov.in", "Chakshu"]
 
 
-# Templated explanation + recommended_action per scam_type, per language.
-# Used in the rules-only fallback path when the LLM is unavailable.
-_TEMPLATES: dict[str, dict[str, tuple[str, str]]] = {
-    "digital_arrest": {
-        "en": (
-            "Signals of a 'digital arrest' scam: fake authority (police/CBI/ED), "
-            "fear tactics, and payment demand. Real agencies never arrest over video calls.",
-            "Do not pay. Do not stay on the call. Report to 1930 and cybercrime.gov.in.",
-        ),
-        "hi": (
-            "'डिजिटल अरेस्ट' घोटाले के संकेत: नकली अधिकारी, डर, भुगतान की मांग। "
-            "असली एजेंसियां वीडियो कॉल पर गिरफ्तार नहीं करतीं।",
-            "पैसे न भेजें। कॉल तुरंत काटें। 1930 और cybercrime.gov.in पर शिकायत करें।",
-        ),
-        "te": (
-            "'డిజిటల్ అరెస్ట్' మోసం సంకేతాలు: నకిలీ అధికారి, భయపెట్టడం, డబ్బు అడగడం. "
-            "నిజమైన ఏజెన్సీలు వీడియో కాల్‌లో అరెస్ట్ చేయవు.",
-            "డబ్బు పంపవద్దు. కాల్ కట్ చేయండి. 1930 మరియు cybercrime.gov.in లో ఫిర్యాదు చేయండి.",
-        ),
-    },
-    "kyc_bank": {
-        "en": (
-            "Signals of a KYC/bank scam: urgent account-block warning and a request to verify or share credentials.",
-            "Do not click links. Do not share OTP/PIN. Call your bank on the number printed on your card.",
-        ),
-        "hi": (
-            "KYC/बैंक घोटाले के संकेत: खाता बंद होने की चेतावनी और OTP/जानकारी मांगना।",
-            "किसी लिंक पर क्लिक न करें। OTP/PIN साझा न करें। कार्ड पर छपे नंबर से बैंक को कॉल करें।",
-        ),
-        "te": (
-            "KYC/బ్యాంక్ మోసం సంకేతాలు: ఖాతా బ్లాక్ హెచ్చరిక, OTP/వివరాలు అడగడం.",
-            "లింక్‌లపై క్లిక్ చేయవద్దు. OTP/PIN షేర్ చేయవద్దు. కార్డుపై ఉన్న నంబర్‌కు బ్యాంక్‌ను కాల్ చేయండి.",
-        ),
-    },
-    "courier_parcel": {
-        "en": (
-            "Signals of a fake courier/customs scam: 'parcel held' and demand for a fee or personal details.",
-            "Do not pay. Verify the parcel directly with the courier's official website or app.",
-        ),
-        "hi": (
-            "नकली कूरियर घोटाले के संकेत: 'पार्सल रोका गया' और शुल्क/जानकारी की मांग।",
-            "पैसे न दें। कूरियर की आधिकारिक वेबसाइट/ऐप पर स्थिति देखें।",
-        ),
-        "te": (
-            "నకిలీ కొరియర్ మోసం సంకేతాలు: 'పార్సెల్ ఆపబడింది' అనీ ఫీజు అడగడం.",
-            "డబ్బు చెల్లించవద్దు. అధికారిక కొరియర్ వెబ్‌సైట్/యాప్‌లో స్థితి తనిఖీ చేయండి.",
-        ),
-    },
-    "investment_stock": {
-        "en": (
-            "Signals of an investment scam: guaranteed returns, VIP tips, or WhatsApp/Telegram trading groups.",
-            "Guaranteed returns do not exist. Do not send money or join paid groups. Report to 1930.",
-        ),
-        "hi": (
-            "निवेश घोटाले के संकेत: गारंटीड रिटर्न, VIP टिप्स, या ट्रेडिंग ग्रुप।",
-            "गारंटीड रिटर्न नहीं होते। पैसा न भेजें, ग्रुप न जॉइन करें। 1930 पर शिकायत करें।",
-        ),
-        "te": (
-            "పెట్టుబడి మోసం సంకేతాలు: గ్యారంటీ లాభాలు, VIP టిప్స్, ట్రేడింగ్ గ్రూప్‌లు.",
-            "గ్యారంటీ లాభాలు ఉండవు. డబ్బు పంపవద్దు. 1930 కి ఫిర్యాదు చేయండి.",
-        ),
-    },
-    "lottery_prize": {
-        "en": (
-            "Signals of a lottery/prize scam: 'you have won' with a processing-fee or bank-details request.",
-            "Do not pay any fee. Do not share bank details. It is a scam.",
-        ),
-        "hi": (
-            "लॉटरी घोटाले के संकेत: 'आपने जीता है' और प्रोसेसिंग फीस या बैंक विवरण मांगना।",
-            "कोई शुल्क न दें। बैंक जानकारी साझा न करें। यह घोटाला है।",
-        ),
-        "te": (
-            "లాటరీ మోసం సంకేతాలు: 'మీరు గెలిచారు' అని ఫీజు లేదా బ్యాంక్ వివరాలు అడగడం.",
-            "ఎలాంటి ఫీజు చెల్లించవద్దు. బ్యాంక్ వివరాలు షేర్ చేయవద్దు. ఇది మోసం.",
-        ),
-    },
-    "upi_collect_request": {
-        "en": (
-            "UPI collect / refund request: scammers get you to APPROVE a payment while promising a refund.",
-            "You never scan a QR or approve a request to RECEIVE money. Decline the request.",
-        ),
-        "hi": (
-            "UPI कलेक्ट/रिफंड घोटाला: रिफंड के बहाने आपसे भुगतान APPROVE कराते हैं।",
-            "पैसे प्राप्त करने के लिए QR स्कैन या रिक्वेस्ट अप्रूव नहीं होती। रिक्वेस्ट रिजेक्ट करें।",
-        ),
-        "te": (
-            "UPI కలెక్ట్/రిఫండ్ మోసం: రిఫండ్ పేరుతో మీచేత చెల్లింపును APPROVE చేయిస్తారు.",
-            "డబ్బు అందుకోవడానికి QR స్కాన్ లేదా అభ్యర్థన ఆమోదించాల్సిన అవసరం లేదు. తిరస్కరించండి.",
-        ),
-    },
-    "job_task": {
-        "en": (
-            "Signals of a task/work-from-home scam: promised earnings for likes/ratings, then a 'prepaid task'.",
-            "Do not pay any prepaid task fee. Legitimate jobs never ask you to pay to earn.",
-        ),
-        "hi": (
-            "टास्क/वर्क-फ्रॉम-होम घोटाले के संकेत: लाइक/रेटिंग के बदले कमाई, फिर 'प्रीपेड टास्क'।",
-            "कोई प्रीपेड टास्क शुल्क न दें। असली नौकरी कमाने के लिए पैसे नहीं मांगती।",
-        ),
-        "te": (
-            "టాస్క్/వర్క్-ఫ్రమ్-హోమ్ మోసం సంకేతాలు: లైక్/రేటింగ్‌కి డబ్బు, తర్వాత 'ప్రీపెయిడ్ టాస్క్'.",
-            "ప్రీపెయిడ్ టాస్క్ ఫీజు చెల్లించవద్దు. నిజమైన ఉద్యోగాలు మీ నుండి డబ్బు అడగవు.",
-        ),
-    },
-    "loan_app": {
-        "en": (
-            "Signals of a loan-app scam: instant loan, no documents, upfront processing fee.",
-            "Do not pay any advance fee. Use only RBI-registered lenders.",
-        ),
-        "hi": (
-            "लोन ऐप घोटाले के संकेत: तुरंत लोन, कोई दस्तावेज़ नहीं, अग्रिम फीस।",
-            "कोई अग्रिम फीस न दें। केवल RBI-पंजीकृत लेंडर से ऋण लें।",
-        ),
-        "te": (
-            "లోన్ యాప్ మోసం సంకేతాలు: వెంటనే రుణం, డాక్యుమెంట్లు లేవు, ముందస్తు ఫీజు.",
-            "ఎలాంటి ముందస్తు ఫీజు చెల్లించవద్దు. RBI-రిజిస్టర్డ్ లెండర్‌లను మాత్రమే ఉపయోగించండి.",
-        ),
-    },
-    "tech_support": {
-        "en": (
-            "Signals of a tech-support scam: 'your computer is infected' with a request to install remote-access software.",
-            "Do not install AnyDesk / TeamViewer for callers. Microsoft never calls you unsolicited.",
-        ),
-        "hi": (
-            "टेक-सपोर्ट घोटाले के संकेत: 'आपका कंप्यूटर संक्रमित है' और रिमोट सॉफ्टवेयर इंस्टॉल कराना।",
-            "AnyDesk/TeamViewer अनजान कॉलर के लिए इंस्टॉल न करें।",
-        ),
-        "te": (
-            "టెక్-సపోర్ట్ మోసం సంకేతాలు: 'మీ కంప్యూటర్ ఇన్ఫెక్ట్ అయింది' అని రిమోట్ యాక్సెస్ ఇన్‌స్టాల్ చేయమనడం.",
-            "అపరిచితుల కోసం AnyDesk/TeamViewer ఇన్‌స్టాల్ చేయవద్దు.",
-        ),
-    },
-    "romance": {
-        "en": (
-            "Signals of a romance scam: online partner asking for money, gifts, or airport/customs help.",
-            "Do not send money to someone you have not met. Report to 1930.",
-        ),
-        "hi": (
-            "रोमांस घोटाले के संकेत: ऑनलाइन साथी पैसे या कस्टम/एयरपोर्ट मदद माँगे।",
-            "जिससे कभी नहीं मिले उसे पैसे न भेजें। 1930 पर शिकायत करें।",
-        ),
-        "te": (
-            "రొమాన్స్ మోసం సంకేతాలు: ఆన్‌లైన్ పరిచయస్తులు డబ్బు లేదా కస్టమ్స్ సహాయం అడగడం.",
-            "కలవని వారికి డబ్బు పంపవద్దు. 1930 కి ఫిర్యాదు చేయండి.",
-        ),
-    },
-    "deepfake_voice": {
-        "en": (
-            "Signals of a deepfake-voice scam: urgent voice message from a 'family member' asking for money.",
-            "Call the person back on their known number before sending anything.",
-        ),
-        "hi": (
-            "डीपफेक-वॉइस घोटाले के संकेत: 'परिवार' का जरूरी वॉइस मैसेज पैसे मांगते हुए।",
-            "पैसा भेजने से पहले उनके ज्ञात नंबर पर स्वयं कॉल करें।",
-        ),
-        "te": (
-            "డీప్‌ఫేక్-వాయిస్ మోసం సంకేతాలు: 'కుటుంబం' నుండి అత్యవసర వాయిస్ మెసేజ్‌లో డబ్బు అడగడం.",
-            "డబ్బు పంపే ముందు వారి తెలిసిన నంబర్‌కు మీరే కాల్ చేయండి.",
-        ),
-    },
-    "other": {
-        "en": (
-            "This message shows some suspicious signals. Treat it with caution.",
-            "Do not share OTPs, do not click links, verify with the official channel.",
-        ),
-        "hi": (
-            "इस संदेश में कुछ संदिग्ध संकेत हैं। सावधानी बरतें।",
-            "OTP साझा न करें, लिंक पर क्लिक न करें, आधिकारिक चैनल से जांचें।",
-        ),
-        "te": (
-            "ఈ సందేశంలో అనుమానాస్పద సంకేతాలు ఉన్నాయి. జాగ్రత్తగా ఉండండి.",
-            "OTP షేర్ చేయవద్దు, లింక్‌లపై క్లిక్ చేయవద్దు, అధికారిక ఛానెల్‌లో ధృవీకరించండి.",
-        ),
-    },
-    "likely_safe": {
-        "en": (
-            "No clear scam signals detected. This message looks likely safe, but stay alert.",
-            "If in doubt, verify with the sender through a known contact channel.",
-        ),
-        "hi": (
-            "कोई स्पष्ट घोटाले के संकेत नहीं मिले। संदेश संभवतः सुरक्षित लगता है, फिर भी सतर्क रहें।",
-            "संदेह हो तो प्रेषक से ज्ञात संपर्क माध्यम पर पुष्टि करें।",
-        ),
-        "te": (
-            "స్పష్టమైన మోసం సంకేతాలు లేవు. సందేశం సురక్షితంగా కనిపిస్తుంది, అయినా జాగ్రత్తగా ఉండండి.",
-            "సందేహం ఉంటే పంపినవారిని తెలిసిన ఛానెల్ ద్వారా ధృవీకరించండి.",
-        ),
-    },
-}
+# Per-scam_type explanation + recommended_action for the rules-only
+# fallback path now lives in locales/<lang>/responses.yaml under
+# fallback_templates, read via core.locales_loader.get_string().
 
 
-# Simple, dependency-free language detection for the fallback path.
+# Simple, dependency-free language detection for the fallback path. One
+# regex per Unicode script block — cheap and works without any external
+# language-detection library. Devanagari is shared by Hindi and Marathi
+# (see _MARATHI_WORDS below for how those two are told apart).
 _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 _TELUGU = re.compile(r"[ఀ-౿]")
+_TAMIL = re.compile(r"[஀-௿]")
+_KANNADA = re.compile(r"[ಀ-೿]")
+_MALAYALAM = re.compile(r"[ഀ-ൿ]")
+_BENGALI = re.compile(r"[ঀ-৿]")
+_GUJARATI = re.compile(r"[઀-૿]")
+_GURMUKHI = re.compile(r"[਀-੿]")  # Punjabi
+
+# Marathi shares Devanagari with Hindi, so script alone can't distinguish
+# them. These are common Marathi function words with no equivalent spelling
+# in standard Hindi — their presence in a Devanagari-script message is a
+# reasonable signal the message is Marathi, not Hindi. Deliberately small
+# and conservative: a false "hi" for an ambiguous/short Marathi message is
+# safe (falls back to the existing, well-tested Hindi path) and preferred
+# over misdetecting Hindi as Marathi.
+_MARATHI_WORDS = re.compile(r"आहे|नाही|आपण|करा")
 
 
 def _detect_language(text: str, hint: Optional[str] = None) -> str:
-    if hint in ("en", "hi", "te"):
+    if hint in SUPPORTED_LANGUAGES:
         return hint
-    if _TELUGU.search(text):
+    if "te" in SUPPORTED_LANGUAGES and _TELUGU.search(text):
         return "te"
+    if "ta" in SUPPORTED_LANGUAGES and _TAMIL.search(text):
+        return "ta"
+    if "kn" in SUPPORTED_LANGUAGES and _KANNADA.search(text):
+        return "kn"
+    if "ml" in SUPPORTED_LANGUAGES and _MALAYALAM.search(text):
+        return "ml"
+    if "bn" in SUPPORTED_LANGUAGES and _BENGALI.search(text):
+        return "bn"
+    if "gu" in SUPPORTED_LANGUAGES and _GUJARATI.search(text):
+        return "gu"
+    if "pa" in SUPPORTED_LANGUAGES and _GURMUKHI.search(text):
+        return "pa"
     if _DEVANAGARI.search(text):
-        return "hi"
+        if "mr" in SUPPORTED_LANGUAGES and _MARATHI_WORDS.search(text):
+            return "mr"
+        if "hi" in SUPPORTED_LANGUAGES:
+            return "hi"
     return "en"
 
 
@@ -246,9 +94,18 @@ def _extract_artifacts(text: str) -> dict:
 
 
 def _safe_verdict(text: str, detected_language: str) -> dict:
-    tmpl_en = (
-        "Unable to analyze this message right now. Treat it with caution.",
-        "Do not share OTPs, do not click links. If unsure, report to 1930.",
+    # This is the last-resort path (rules_classify itself raised) — the
+    # literal English strings here are the ultimate hardcoded backstop
+    # get_string()'s `default` falls through to; they are intentionally
+    # NOT locale-driven so this path can never fail even if locales/ itself
+    # is broken.
+    explanation = get_string(
+        detected_language, "fallback_templates", "other", "explanation",
+        default="Unable to analyze this message right now. Treat it with caution.",
+    )
+    action = get_string(
+        detected_language, "fallback_templates", "other", "recommended_action",
+        default="Do not share OTPs, do not click links. If unsure, report to 1930.",
     )
     return {
         "scam_type": "other",
@@ -259,8 +116,8 @@ def _safe_verdict(text: str, detected_language: str) -> dict:
         "signals": [],
         "matched_patterns": [],
         "artifacts": _extract_artifacts(text),
-        "explanation": tmpl_en[0],
-        "recommended_action": tmpl_en[1],
+        "explanation": explanation,
+        "recommended_action": action,
         "report": {"channels": REPORT_CHANNELS, "prefilled_summary": ""},
         "detected_language": detected_language,
     }
@@ -268,8 +125,20 @@ def _safe_verdict(text: str, detected_language: str) -> dict:
 
 def _fallback_from_rules(rules_out: dict, text: str, detected_language: str) -> dict:
     scam_type = rules_out["scam_type"]
-    templates = _TEMPLATES.get(scam_type) or _TEMPLATES["other"]
-    explanation, action = templates.get(detected_language) or templates["en"]
+    explanation = get_string(
+        detected_language, "fallback_templates", scam_type, "explanation",
+        default=get_string(
+            "en", "fallback_templates", "other", "explanation",
+            default="This message shows some suspicious signals. Treat it with caution.",
+        ),
+    )
+    action = get_string(
+        detected_language, "fallback_templates", scam_type, "recommended_action",
+        default=get_string(
+            "en", "fallback_templates", "other", "recommended_action",
+            default="Do not share OTPs, do not click links, verify with the official channel.",
+        ),
+    )
 
     # Cap fallback confidence modestly.
     rule_risk = rules_out["rule_risk"]
@@ -423,8 +292,15 @@ def _apply_rag(verdict: dict, hits: list[dict]) -> dict:
     return verdict
 
 
-def analyze(text: str, language: Optional[str] = None) -> dict:
-    """Public entry point. Always returns a valid Verdict dict; never raises."""
+def analyze(text: str, language: Optional[str] = None, sender: Optional[str] = None) -> dict:
+    """Public entry point. Always returns a valid Verdict dict; never raises.
+
+    `sender` is an optional structured field (e.g. a DLT header, 10-digit
+    mobile number, or shortcode) carried alongside `text`, never concatenated
+    into it. Not yet consumed by rules/LLM/RAG — reserved for a future
+    sender-aware signal (see F2 sender.py) so callers can start passing it
+    now without their text being misread as containing a header.
+    """
     text = text or ""
     detected_language = _detect_language(text, language)
 
@@ -488,6 +364,6 @@ def analyze(text: str, language: Optional[str] = None) -> dict:
     return verdict
 
 
-def classify(text: str, language: Optional[str] = None) -> dict:
+def classify(text: str, language: Optional[str] = None, sender: Optional[str] = None) -> dict:
     """Backwards-compatible alias."""
-    return analyze(text, language)
+    return analyze(text, language, sender)

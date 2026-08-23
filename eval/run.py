@@ -5,12 +5,30 @@ Distinct from eval/run_eval.py (the original harness, left untouched). This
 script implements the v1 dataset schema documented in eval/datasets/README.md
 and scores every row TWICE:
 
-  1. "with_sender"    — sender prepended to the text as a header line.
-  2. "sender_stripped" — text alone, exactly as a WhatsApp-forwarded message
-                          usually arrives (no header, no visible sender).
+  1. "with_sender"    — sender passed to analyze() as the structured `sender`
+                        kwarg, alongside `text`. Never concatenated into the
+                        message body — the engine has no sender parser yet,
+                        so a header glued into the text would just be read
+                        as message content and confound the comparison. Only
+                        scores rows with sender_type == "dlt_header" — a
+                        message with no real header has nothing to strip, so
+                        scoring it here would be indistinguishable from
+                        sender_stripped and would just dilute the numbers.
+  2. "sender_stripped" — sender=None, text alone, exactly as a
+                          WhatsApp-forwarded message usually arrives (no
+                          header, no visible sender). Scores every row.
 
 Both passes are reported side by side so a swing in headline metrics between
 them is visible instead of hidden in a single blended number.
+
+Every metric is ALSO split three ways by the row's `synthetic` field:
+  - "all"       — every scored row, mixed. Sanity total only.
+  - "synthetic" — REGRESSION BASELINE. Generated text; tells you if a rule
+                  change broke something, never quote this externally.
+  - "real"      — rows with synthetic=false (verbatim extracts, real_phone
+                  submissions). The only segment safe for a deck/README.
+Each printed block and each key in the JSON output is labeled with which
+segment it is, so a number can't be lifted out of context by accident.
 
 Usage:
     python eval/run.py [--dataset eval/datasets/v1.jsonl] [--max-fpr 0.05]
@@ -19,6 +37,12 @@ Usage:
 Run from the project root so relative paths resolve.
 Exit code 1 if the FPR-on-legit headline (either pass) exceeds --max-fpr,
 so this can gate CI later.
+
+`--baseline` writes results/baseline.json — reserve that name for a run over
+the FULL dataset. Any run under 200 rows, or with a class below 15% of the
+set, is a smoke test: it prints a loud warning and writes results/smoke.json
+instead, even if --baseline was passed, so a 40-row number never gets
+filed under the name reviewers will trust as the real baseline.
 """
 
 from __future__ import annotations
@@ -42,6 +66,8 @@ except ImportError:
     pass
 
 from services.classifier import analyze  # noqa: E402
+
+from taxonomy_map import map_row_to_scam_type  # noqa: E402
 
 VALID_LABELS = {"legit", "scam", "unclear"}
 VALID_SENDER_TYPES = {"dlt_header", "mobile_10d", "intl", "shortcode", "unknown"}
@@ -72,7 +98,7 @@ def load_dataset(path: Path) -> list[dict]:
                 continue
             missing = {
                 "id", "text", "sender", "sender_type", "lang", "label",
-                "category", "ask_class", "hard_negative", "source",
+                "category", "ask_class", "hard_negative", "source", "synthetic",
             } - row.keys()
             if missing:
                 print(f"WARN: row {row.get('id', i)} missing fields {missing}, skipping", file=sys.stderr)
@@ -81,14 +107,23 @@ def load_dataset(path: Path) -> list[dict]:
     return rows
 
 
-def _build_text_for_pass(row: dict, pass_name: str) -> str:
-    """with_sender: prepend a sender header line, mimicking a raw inbound
-    message. sender_stripped: the bare text, mimicking a WhatsApp forward
-    that dropped the header/number."""
+def _has_real_header(row: dict) -> bool:
+    """True only if this row carries an actual sender header worth scoring
+    with vs. without. `sender_type` values other than dlt_header (mobile
+    number, intl, shortcode, unknown) are not a "header" in the sense this
+    comparison cares about — a bare 10-digit number or "unknown" gives the
+    engine nothing structurally different to condition on."""
+    sender = row.get("sender")
+    return row.get("sender_type") == "dlt_header" and bool(sender) and sender != "unknown"
+
+
+def _sender_for_pass(row: dict, pass_name: str) -> str | None:
+    """with_sender: the row's sender field, passed structurally.
+    sender_stripped: None, mimicking a WhatsApp forward that dropped the
+    header/number. Never merged into `text` — see module docstring."""
     if pass_name == PASS_SENDER_STRIPPED:
-        return row["text"]
-    sender = row.get("sender") or "unknown"
-    return f"From: {sender}\n{row['text']}"
+        return None
+    return row["sender"]
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +131,10 @@ def _build_text_for_pass(row: dict, pass_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def predict_one(text: str, language: str | None, risk_threshold: int) -> dict:
+def predict_one(text: str, language: str | None, sender: str | None, risk_threshold: int) -> dict:
     """Call the real engine, unmodified. Returns a normalized prediction."""
     try:
-        verdict = analyze(text, language=language)
+        verdict = analyze(text, language=language, sender=sender)
     except Exception as e:
         return {
             "ok": False,
@@ -134,17 +169,55 @@ def predict_one(text: str, language: str | None, risk_threshold: int) -> dict:
 
 
 def evaluate_pass(rows: list[dict], pass_name: str, risk_threshold: int) -> list[dict]:
+    """sender_stripped scores every row. with_sender only scores rows that
+    actually carry a real header (see _has_real_header) — scoring a row with
+    sender="unknown" under "with_sender" would silently pass sender=None
+    either way, making it indistinguishable from sender_stripped while still
+    diluting the headline numbers."""
     out = []
     for row in rows:
-        text = _build_text_for_pass(row, pass_name)
-        pred = predict_one(text, row.get("lang"), risk_threshold)
-        out.append({**row, **pred, "pass": pass_name})
+        if pass_name == PASS_WITH_SENDER and not _has_real_header(row):
+            continue
+        sender = _sender_for_pass(row, pass_name)
+        pred = predict_one(row["text"], row.get("lang"), sender, risk_threshold)
+        out.append({**row, **pred, "pass": pass_name, "sender_used": sender})
     return out
 
 
 # ---------------------------------------------------------------------------
 # Metrics
 # ---------------------------------------------------------------------------
+
+# Every metric block is computed three ways. This label is embedded in the
+# output so a number can never be quoted without knowing which one it is:
+#   "all"       — every scored row, synthetic + real mixed. Not a clean
+#                 signal either way — mostly useful as a sanity total.
+#   "synthetic" — REGRESSION BASELINE ONLY. Generated text was written to hit
+#                 specific patterns; a change in this number says whether a
+#                 rule/prompt change broke something that used to work. Do
+#                 not put this number in a deck or README.
+#   "real"      — the only segment that can be quoted externally (deck,
+#                 README, pitch). Rows with synthetic=false: verbatim
+#                 extracts and real_phone submissions.
+SEGMENT_ALL = "all"
+SEGMENT_SYNTHETIC = "synthetic"
+SEGMENT_REAL = "real"
+
+SEGMENT_LABELS = {
+    SEGMENT_ALL: "ALL (mixed — sanity total only)",
+    SEGMENT_SYNTHETIC: "SYNTHETIC (regression baseline — NOT for deck/README)",
+    SEGMENT_REAL: "REAL (validation subset — the only one safe to quote)",
+}
+
+
+def _segment(results: list[dict], segment: str) -> list[dict]:
+    if segment == SEGMENT_ALL:
+        return results
+    if segment == SEGMENT_SYNTHETIC:
+        return [r for r in results if r.get("synthetic")]
+    if segment == SEGMENT_REAL:
+        return [r for r in results if not r.get("synthetic")]
+    raise ValueError(f"unknown segment {segment!r}")
 
 
 def compute_metrics(results: list[dict]) -> dict:
@@ -168,9 +241,15 @@ def compute_metrics(results: list[dict]) -> dict:
     scam_recall_hit = sum(1 for r in scam_rows if r["ok"] and r["predicted_label"] == "scam")
     scam_recall = round(scam_recall_hit / len(scam_rows), 4) if scam_rows else 0.0
 
+    # Grouped by the engine's SCAM_TAXONOMY (via taxonomy_map.py), not the
+    # raw v2 dataset `category` field — several v2 categories (otp, promo,
+    # txn_alert, phishing_link, job_lottery) mix multiple engine-facing scam
+    # types under one dataset theme name, so a raw-category recall table
+    # would group unrelated engine behavior together. See
+    # eval/taxonomy_map.py for the mapping and its documented judgment calls.
     per_category_recall = {}
-    for cat in sorted(set(r["category"] for r in scam_rows)):
-        cat_rows = [r for r in scam_rows if r["category"] == cat]
+    for cat in sorted(set(map_row_to_scam_type(r) for r in scam_rows)):
+        cat_rows = [r for r in scam_rows if map_row_to_scam_type(r) == cat]
         hit = sum(1 for r in cat_rows if r["ok"] and r["predicted_label"] == "scam")
         per_category_recall[cat] = {
             "support": len(cat_rows),
@@ -206,8 +285,13 @@ def compute_metrics(results: list[dict]) -> dict:
     }
 
 
+def compute_all_segments(results: list[dict]) -> dict[str, dict]:
+    """Compute the all/synthetic/real metric blocks for one pass's results."""
+    return {seg: compute_metrics(_segment(results, seg)) for seg in SEGMENT_LABELS}
+
+
 # ---------------------------------------------------------------------------
-# Reporting
+# Sample-size sanity check
 # ---------------------------------------------------------------------------
 
 
@@ -215,8 +299,37 @@ def _fmt_pct(x: float) -> str:
     return f"{x * 100:.1f}%"
 
 
+MIN_ROWS_FOR_BASELINE = 200
+MIN_CLASS_SHARE = 0.15
+
+
+def check_sample_size(rows: list[dict]) -> list[str]:
+    """Return a list of warning strings if this dataset is too small or too
+    imbalanced to be quoted as a real baseline. Empty list = looks fine."""
+    warnings = []
+    n = len(rows)
+    if n < MIN_ROWS_FOR_BASELINE:
+        warnings.append(
+            f"only {n} rows (< {MIN_ROWS_FOR_BASELINE}) — this is a SMOKE TEST, "
+            f"not a baseline. On ~{n} rows one flipped row moves headline "
+            f"metrics by ~{round(100 / max(n, 1), 1)} points."
+        )
+    label_counts = Counter(r["label"] for r in rows)
+    for label in sorted(VALID_LABELS):
+        share = label_counts.get(label, 0) / n if n else 0.0
+        if share < MIN_CLASS_SHARE:
+            warnings.append(
+                f"label='{label}' is only {_fmt_pct(share)} of rows "
+                f"({label_counts.get(label, 0)}/{n}), below the {_fmt_pct(MIN_CLASS_SHARE)} floor — "
+                f"metrics for this class are noisy."
+            )
+    return warnings
+
+
 def print_side_by_side(metrics_a: dict, metrics_b: dict, label_a: str, label_b: str) -> None:
-    print(f"\n{'Metric':40s} {label_a:>18s} {label_b:>18s}")
+    label_a_hdr = f"{label_a} (n={metrics_a['total']})"
+    label_b_hdr = f"{label_b} (n={metrics_b['total']})"
+    print(f"\n{'Metric':40s} {label_a_hdr:>18s} {label_b_hdr:>18s}")
     print("-" * 78)
 
     def row(name: str, va: Any, vb: Any) -> None:
@@ -259,6 +372,20 @@ def print_side_by_side(metrics_a: dict, metrics_b: dict, label_a: str, label_b: 
             print(f"  {true_label:10s} " + " ".join(f"{counts.get(p, 0):>8d}" for p in labels))
 
 
+def print_all_segments(segments_with_sender: dict[str, dict], segments_stripped: dict[str, dict]) -> None:
+    """Print the with_sender vs. sender_stripped comparison three times —
+    once per segment (all/synthetic/real) — each block loudly labeled so a
+    number can't be lifted out of context later."""
+    for seg in (SEGMENT_ALL, SEGMENT_SYNTHETIC, SEGMENT_REAL):
+        print("\n" + "=" * 78)
+        print(f"SEGMENT: {SEGMENT_LABELS[seg]}")
+        print("=" * 78)
+        print_side_by_side(
+            segments_with_sender[seg], segments_stripped[seg],
+            PASS_WITH_SENDER, PASS_SENDER_STRIPPED,
+        )
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -271,7 +398,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--risk-threshold", type=int, default=40)
     ap.add_argument("--max-fpr", type=float, default=0.10, help="Exit 1 if headline legit FPR exceeds this, in either pass")
-    ap.add_argument("--baseline", action="store_true", help="Also write results/baseline.json")
+    ap.add_argument(
+        "--baseline", action="store_true",
+        help="Write results/baseline.json — REFUSED (downgraded to smoke.json) if the "
+             "dataset is too small or too imbalanced; see --force-baseline",
+    )
+    ap.add_argument(
+        "--force-baseline", action="store_true",
+        help="Write results/baseline.json even if the sample-size check would otherwise "
+             "downgrade it to smoke.json. Use only if you have a deliberate reason.",
+    )
     args = ap.parse_args(argv)
 
     dataset_path = Path(args.dataset)
@@ -287,28 +423,56 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"# Kavach eval v2 — {len(rows)} rows from {dataset_path}")
 
+    size_warnings = check_sample_size(rows)
+    is_smoke = bool(size_warnings) and not args.force_baseline
+    if size_warnings:
+        print("\n" + "!" * 78, file=sys.stderr)
+        print("! SAMPLE SIZE WARNING — DO NOT QUOTE THIS RUN AS A BASELINE", file=sys.stderr)
+        print("!" * 78, file=sys.stderr)
+        for w in size_warnings:
+            print(f"! {w}", file=sys.stderr)
+        if is_smoke and args.baseline:
+            print("! --baseline requested but downgraded to smoke.json (pass --force-baseline to override)", file=sys.stderr)
+        print("!" * 78 + "\n", file=sys.stderr)
+
+    header_rows = [r for r in rows if _has_real_header(r)]
+    print(
+        f"# with_sender pass: {len(header_rows)}/{len(rows)} rows have a real "
+        f"sender_type=dlt_header — only those are scored under with_sender; "
+        f"sender_stripped always scores all {len(rows)} rows."
+    )
+
     results_with_sender = evaluate_pass(rows, PASS_WITH_SENDER, args.risk_threshold)
     results_stripped = evaluate_pass(rows, PASS_SENDER_STRIPPED, args.risk_threshold)
 
-    metrics_with_sender = compute_metrics(results_with_sender)
-    metrics_stripped = compute_metrics(results_stripped)
+    segments_with_sender = compute_all_segments(results_with_sender)
+    segments_stripped = compute_all_segments(results_stripped)
 
-    print_side_by_side(metrics_with_sender, metrics_stripped, PASS_WITH_SENDER, PASS_SENDER_STRIPPED)
+    real_n = sum(1 for r in rows if not r.get("synthetic"))
+    print(f"# real (synthetic=false) rows in this dataset: {real_n}/{len(rows)}")
+    if real_n == 0:
+        print("# NOTE: 0 real rows — the REAL segment below is empty and cannot be quoted anywhere.", file=sys.stderr)
+
+    print_all_segments(segments_with_sender, segments_stripped)
 
     payload = {
         "dataset": str(dataset_path),
+        "is_smoke_test": is_smoke,
+        "sample_size_warnings": size_warnings,
+        "segment_labels": SEGMENT_LABELS,
         "config": {
             "risk_threshold": args.risk_threshold,
             "max_fpr": args.max_fpr,
             "rows": len(rows),
+            "real_rows": real_n,
         },
         "passes": {
             PASS_WITH_SENDER: {
-                "metrics": metrics_with_sender,
+                "segments": segments_with_sender,
                 "results": results_with_sender,
             },
             PASS_SENDER_STRIPPED: {
-                "metrics": metrics_stripped,
+                "segments": segments_stripped,
                 "results": results_stripped,
             },
         },
@@ -322,23 +486,27 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nWrote: {timestamped_path}")
 
     if args.baseline:
-        baseline_path = outdir / "baseline.json"
-        with baseline_path.open("w", encoding="utf-8") as f:
+        named_path = outdir / ("smoke.json" if is_smoke else "baseline.json")
+        with named_path.open("w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
-        print(f"Wrote: {baseline_path}")
+        print(f"Wrote: {named_path}")
 
+    # Gate on the ALL segment (every scored row) — this is the full-run
+    # number and matches the pre-segment-split gate behavior. It intentionally
+    # does NOT gate on the real-only segment: with few real rows today, that
+    # segment is too small to be a reliable CI gate on its own.
     worst_fpr = max(
-        metrics_with_sender["fpr_legit_headline"]["fpr"],
-        metrics_stripped["fpr_legit_headline"]["fpr"],
+        segments_with_sender[SEGMENT_ALL]["fpr_legit_headline"]["fpr"],
+        segments_stripped[SEGMENT_ALL]["fpr_legit_headline"]["fpr"],
     )
     if worst_fpr > args.max_fpr:
         print(
-            f"\nFAIL: legit FPR {_fmt_pct(worst_fpr)} exceeds --max-fpr {_fmt_pct(args.max_fpr)}",
+            f"\nFAIL: legit FPR (ALL segment) {_fmt_pct(worst_fpr)} exceeds --max-fpr {_fmt_pct(args.max_fpr)}",
             file=sys.stderr,
         )
         return 1
 
-    print(f"\nOK: legit FPR {_fmt_pct(worst_fpr)} within --max-fpr {_fmt_pct(args.max_fpr)}")
+    print(f"\nOK: legit FPR (ALL segment) {_fmt_pct(worst_fpr)} within --max-fpr {_fmt_pct(args.max_fpr)}")
     return 0
 
 

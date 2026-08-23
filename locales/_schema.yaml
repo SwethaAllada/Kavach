@@ -15,6 +15,30 @@ files:
   responses.yaml:
     required_keys:
       - language           # ISO 639-1 code, must match the directory name
-      - verdicts            # dict[verdict_key -> str] user-facing verdict strings
-                             # required verdict_key entries:
-                             #   scam, likely_scam, unclear, likely_legit, legit
+      # The three keys below back the real request-path consumers
+      # (classifier.py / report.py / whatsapp_format.py). They are read via
+      # backend/core/locales_loader.get_string(), which falls back to English
+      # then to a caller-supplied default on any missing language/key, so a
+      # locale MAY omit individual sub-keys without breaking /analyze or
+      # /webhook — but for en/hi/te today every key below is populated.
+      - fallback_templates  # dict[scam_type -> {explanation, recommended_action}]
+                             # used by classifier.py's rules-fallback path
+      - report               # dict with three sub-keys:
+                             #   summary_parts: dict[part_name -> str] (opener/asked/
+                             #     belief/payment/contact_prefix/no_contact/personal)
+                             #   type_human: dict[scam_type -> str]
+                             #   ask_clause: dict[scam_type -> str]
+      - whatsapp             # dict with two sub-keys:
+                             #   scam_labels: dict[scam_type -> str]
+                             #   strings: dict[string_key -> str] (brand/scam/caution/
+                             #     safe/risk_line/why/action/report_prefix/
+                             #     summary_available/footer/err)
+    optional_keys:
+      - verdicts            # dict[verdict_key -> str] — a legacy 5-bucket
+                             # verdict model (scam/likely_scam/unclear/
+                             # likely_legit/legit + generic action warnings)
+                             # that predates classifier.py's real per-scam_type
+                             # templates above and has no live consumer today.
+                             # en/ has English wording for it; hi/ and te/
+                             # don't (no existing wording to port), so it's
+                             # optional rather than invented.

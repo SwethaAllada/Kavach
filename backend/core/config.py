@@ -73,5 +73,14 @@ class Settings:
         self.llm_timeout_s: int = _parse_int(os.getenv("KAVACH_LLM_TIMEOUT_S", "20"), 20)
         self.max_retries: int = _parse_int(os.getenv("KAVACH_MAX_RETRIES", "2"), 2)
 
+        # --- Translation (locales_loader.py) -------------------------------------
+        # Runtime translation via deep-translator for languages with no
+        # authored locales/<code>/ YAML. On by default; tests set this False
+        # (settings.translation_enabled = False) so the suite never makes a
+        # real network call to Google Translate.
+        self.translation_enabled: bool = _parse_bool(
+            os.getenv("KAVACH_TRANSLATION_ENABLED", "true"), default=True
+        )
+
 
 settings = Settings()

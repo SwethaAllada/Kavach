@@ -223,7 +223,15 @@ frontend/           React + Vite web client
     lib/api.js        typed API client with graceful error handling
     styles/index.css  design system (trust-blue palette, semantic risk colors,
                       reduced-motion, mobile-responsive)
-data/scam_kb.json   22-entry multilingual scam knowledge base
+data/kb/*.yaml      source-of-truth KB entries, one file per entry
+data/scam_kb.json   22-entry multilingual scam knowledge base — a BUILD ARTIFACT of
+                    data/kb/*.yaml. Regenerate with `python scripts/build_kb.py` after
+                    editing any data/kb/*.yaml file (`--check` verifies it's up to date
+                    without writing — editing a .yaml and forgetting to rebuild would
+                    otherwise leave rag.py silently serving stale content).
+locales/            per-language response strings (locales/<code>/responses.yaml),
+                    the source of truth for classifier.py/report.py/whatsapp_format.py
+                    reply text, read via backend/core/locales_loader.py
 eval/               110-row labeled dataset + evaluation harness
 deploy/             render.yaml, vercel.json, supabase.sql
 docs/               privacy.md, security.md, architecture.md, business.md, demo-script.md

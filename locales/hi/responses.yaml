@@ -1,0 +1,122 @@
+language: hi
+
+# NOTE: the `verdicts` block (scam/likely_scam/unclear/likely_legit/legit +
+# generic action warnings) has no existing Hindi wording anywhere in the
+# codebase to port — it backs the unwired 5-bucket verdict model from
+# locales/en/responses.yaml, which was never localized either. Deliberately
+# left absent here rather than inventing new wording (see task instruction:
+# "do not invent new wording — port the exact strings that exist today").
+# backend/core/locales_loader.get_string() falls back to English for any
+# missing key, so this is safe — no consumer breaks.
+
+# Per-scam_type explanation + recommended_action used by classifier.py's
+# rules-only fallback path. Ported verbatim from the previous hardcoded
+# _TEMPLATES["hi"] entries in classifier.py.
+fallback_templates:
+  digital_arrest:
+    explanation: "'डिजिटल अरेस्ट' घोटाले के संकेत: नकली अधिकारी, डर, भुगतान की मांग। असली एजेंसियां वीडियो कॉल पर गिरफ्तार नहीं करतीं।"
+    recommended_action: "पैसे न भेजें। कॉल तुरंत काटें। 1930 और cybercrime.gov.in पर शिकायत करें।"
+  kyc_bank:
+    explanation: "KYC/बैंक घोटाले के संकेत: खाता बंद होने की चेतावनी और OTP/जानकारी मांगना।"
+    recommended_action: "किसी लिंक पर क्लिक न करें। OTP/PIN साझा न करें। कार्ड पर छपे नंबर से बैंक को कॉल करें।"
+  courier_parcel:
+    explanation: "नकली कूरियर घोटाले के संकेत: 'पार्सल रोका गया' और शुल्क/जानकारी की मांग।"
+    recommended_action: "पैसे न दें। कूरियर की आधिकारिक वेबसाइट/ऐप पर स्थिति देखें।"
+  investment_stock:
+    explanation: "निवेश घोटाले के संकेत: गारंटीड रिटर्न, VIP टिप्स, या ट्रेडिंग ग्रुप।"
+    recommended_action: "गारंटीड रिटर्न नहीं होते। पैसा न भेजें, ग्रुप न जॉइन करें। 1930 पर शिकायत करें।"
+  lottery_prize:
+    explanation: "लॉटरी घोटाले के संकेत: 'आपने जीता है' और प्रोसेसिंग फीस या बैंक विवरण मांगना।"
+    recommended_action: "कोई शुल्क न दें। बैंक जानकारी साझा न करें। यह घोटाला है।"
+  upi_collect_request:
+    explanation: "UPI कलेक्ट/रिफंड घोटाला: रिफंड के बहाने आपसे भुगतान APPROVE कराते हैं।"
+    recommended_action: "पैसे प्राप्त करने के लिए QR स्कैन या रिक्वेस्ट अप्रूव नहीं होती। रिक्वेस्ट रिजेक्ट करें।"
+  job_task:
+    explanation: "टास्क/वर्क-फ्रॉम-होम घोटाले के संकेत: लाइक/रेटिंग के बदले कमाई, फिर 'प्रीपेड टास्क'।"
+    recommended_action: "कोई प्रीपेड टास्क शुल्क न दें। असली नौकरी कमाने के लिए पैसे नहीं मांगती।"
+  loan_app:
+    explanation: "लोन ऐप घोटाले के संकेत: तुरंत लोन, कोई दस्तावेज़ नहीं, अग्रिम फीस।"
+    recommended_action: "कोई अग्रिम फीस न दें। केवल RBI-पंजीकृत लेंडर से ऋण लें।"
+  tech_support:
+    explanation: "टेक-सपोर्ट घोटाले के संकेत: 'आपका कंप्यूटर संक्रमित है' और रिमोट सॉफ्टवेयर इंस्टॉल कराना।"
+    recommended_action: "AnyDesk/TeamViewer अनजान कॉलर के लिए इंस्टॉल न करें।"
+  romance:
+    explanation: "रोमांस घोटाले के संकेत: ऑनलाइन साथी पैसे या कस्टम/एयरपोर्ट मदद माँगे।"
+    recommended_action: "जिससे कभी नहीं मिले उसे पैसे न भेजें। 1930 पर शिकायत करें।"
+  deepfake_voice:
+    explanation: "डीपफेक-वॉइस घोटाले के संकेत: 'परिवार' का जरूरी वॉइस मैसेज पैसे मांगते हुए।"
+    recommended_action: "पैसा भेजने से पहले उनके ज्ञात नंबर पर स्वयं कॉल करें।"
+  other:
+    explanation: "इस संदेश में कुछ संदिग्ध संकेत हैं। सावधानी बरतें।"
+    recommended_action: "OTP साझा न करें, लिंक पर क्लिक न करें, आधिकारिक चैनल से जांचें।"
+  likely_safe:
+    explanation: "कोई स्पष्ट घोटाले के संकेत नहीं मिले। संदेश संभवतः सुरक्षित लगता है, फिर भी सतर्क रहें।"
+    recommended_action: "संदेह हो तो प्रेषक से ज्ञात संपर्क माध्यम पर पुष्टि करें।"
+
+# Guided-reporting text used by report.py's build_report(). Ported verbatim
+# from _SUMMARIES["hi"] / _TYPE_HUMAN[*]["hi"] / _ASK_CLAUSE[*]["hi"].
+report:
+  summary_parts:
+    opener: "[तारीख] को मुझे {entity} बनकर एक संदेश/कॉल मिला।"
+    asked: "उसने मुझसे {ask} के लिए कहा।"
+    belief: "मुझे लगता है यह {scam_type_human} घोटाला है।"
+    payment: "मैंने [राशि] रुपये [UPI/बैंक विवरण] के माध्यम से भेजे / भेजने को कहा गया।"
+    contact_prefix: "संदेश में दिखे प्रेषक/संपर्क विवरण:"
+    no_contact: "संदेश में कोई प्रेषक संपर्क विवरण नहीं मिला।"
+    personal: "मेरा विवरण: [आपका नाम], [आपका फ़ोन], [आपका शहर]।"
+  type_human:
+    digital_arrest: "डिजिटल अरेस्ट"
+    kyc_bank: "KYC / बैंक"
+    courier_parcel: "नकली कूरियर / कस्टम"
+    investment_stock: "निवेश / स्टॉक टिप"
+    lottery_prize: "लॉटरी / इनाम"
+    tech_support: "नकली टेक-सपोर्ट"
+    job_task: "टास्क / पार्ट-टाइम जॉब"
+    loan_app: "लोन ऐप"
+    romance: "रोमांस"
+    deepfake_voice: "डीपफेक वॉइस"
+    upi_collect_request: "UPI कलेक्ट-रिक्वेस्ट"
+    other: "संदिग्ध संदेश"
+  ask_clause:
+    digital_arrest: "वीडियो कॉल पर बने रहने और 'वेरिफिकेशन खाते' में पैसे भेजने"
+    kyc_bank: "OTP साझा करने / KYC लिंक पर क्लिक करने"
+    courier_parcel: "पार्सल छुड़ाने के लिए कस्टम/क्लीयरेंस शुल्क देने"
+    investment_stock: "ट्रेडिंग ग्रुप जॉइन करने / गारंटीड रिटर्न के लिए पैसे जमा करने"
+    lottery_prize: "इनाम पाने के लिए 'प्रोसेसिंग फीस' देने या बैंक विवरण साझा करने"
+    tech_support: "रिमोट-एक्सेस सॉफ्टवेयर इंस्टॉल करने और वेरिफिकेशन कोड साझा करने"
+    job_task: "अधिक कमाई के लिए 'प्रीपेड टास्क' शुल्क देने"
+    loan_app: "लोन पाने के लिए अग्रिम प्रोसेसिंग शुल्क देने"
+    romance: "आपात स्थिति (हवाई अड्डा/कस्टम/अस्पताल) के लिए पैसे भेजने"
+    deepfake_voice: "'परिवार के सदस्य की मुसीबत' के नाम पर तुरंत पैसे भेजने"
+    upi_collect_request: "पैसे 'प्राप्त' करने के लिए UPI कलेक्ट-रिक्वेस्ट अप्रूव करने / UPI PIN डालने"
+    other: "संवेदनशील जानकारी साझा करने या तुरंत भुगतान करने"
+
+# WhatsApp reply formatter text used by whatsapp_format.py. Ported verbatim
+# from _SCAM_LABELS[*]["hi"] / _STRINGS["hi"].
+whatsapp:
+  scam_labels:
+    digital_arrest: "डिजिटल अरेस्ट"
+    investment_stock: "निवेश / ट्रेडिंग"
+    kyc_bank: "बैंक / KYC"
+    courier_parcel: "कूरियर / कस्टम"
+    job_task: "टास्क जॉब"
+    loan_app: "लोन ऐप"
+    lottery_prize: "लॉटरी / इनाम"
+    tech_support: "टेक सपोर्ट"
+    upi_collect_request: "UPI कलेक्ट"
+    romance: "रोमांस"
+    deepfake_voice: "डीपफेक वॉइस"
+    other: "संदिग्ध"
+    likely_safe: "संभवतः सुरक्षित"
+  strings:
+    brand: "Kavach"
+    scam: "⚠️ संभावित घोटाला"
+    caution: "⚠️ संदिग्ध — सावधान रहें"
+    safe: "✅ सुरक्षित लगता है"
+    risk_line: "{headline} — {label} (जोखिम {risk}/100)"
+    why: "क्यों:"
+    action: "क्या करें:"
+    report_prefix: "अभी रिपोर्ट करें:"
+    summary_available: "तैयार शिकायत सारांश Kavach ऐप में उपलब्ध है।"
+    footer: "— Kavach (केवल मार्गदर्शन; हम आपकी ओर से शिकायत दर्ज नहीं करते)"
+    err: "क्षमा करें, अभी संदेश का विश्लेषण नहीं हो सका। कृपया दोबारा प्रयास करें।"

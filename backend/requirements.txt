@@ -7,3 +7,4 @@ httpx
 openai
 pyyaml
 pytest
+deep-translator>=1.11,<2

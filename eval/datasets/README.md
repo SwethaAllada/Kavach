@@ -6,7 +6,7 @@ work independently).
 
 ## Schema
 
-One JSON object per line (`.jsonl`). Every row must have all ten fields.
+One JSON object per line (`.jsonl`). Every row must have all eleven fields.
 
 | Field | Type | Values | Notes |
 | --- | --- | --- | --- |
@@ -20,20 +20,55 @@ One JSON object per line (`.jsonl`). Every row must have all ten fields.
 | `ask_class` | enum | `none`, `click`, `call_back`, `share_credential`, `make_payment`, `install_app` | the action the message is asking for |
 | `hard_negative` | boolean | `true` / `false` | `true` = legit message that looks scam-like (urgency, links, payment mentions) — the case that actually stresses the false-positive rate |
 | `source` | string | free-form | provenance, see below |
+| `synthetic` | boolean | `true` / `false` | `true` = generated/hand-authored text. `false` = a real message (verbatim extract or `real_phone`). **This is the field that gates what can be quoted externally** — see "synthetic vs. real" below. |
+
+### `synthetic` vs. real — what can go in the deck
+
+`eval/run.py` reports every metric split three ways: **all**, **synthetic
+only**, and **real only**.
+
+- **synthetic** metrics are a **regression baseline** — did a rule change
+  break something that used to work. Useful for CI/iteration, not for
+  external claims, because the text was written to hit specific patterns.
+- **real** metrics (from `synthetic: false` rows — verbatim extracts and
+  `real_phone` submissions) are the only numbers that can go in a deck,
+  README, or pitch. They're currently a small validation subset (5 rows in
+  `v2.jsonl` until `real_phone` rows are added), so treat them as a sanity
+  check on generalization, not a headline number, until that subset grows.
+
+Never report the "all" or "synthetic" number as if it were a real-world
+accuracy claim — `eval/run.py` labels each block explicitly so this can't
+happen by accident.
 
 ## Why two scoring passes
 
 `eval/run.py` scores every row twice:
 
-- **`with_sender`** — `sender` is prepended to `text` as a `From: <sender>`
-  header line before calling the engine.
-- **`sender_stripped`** — `text` alone, with no header at all.
+- **`with_sender`** — `sender` is passed to `analyze()` as its own structured
+  `sender` kwarg, alongside `text`. It is never concatenated into `text`: the
+  engine has no sender parser yet, so gluing a header into the message body
+  would just be read as message content, not as sender context — that would
+  confound this comparison rather than measure it.
+- **`sender_stripped`** — `sender=None`, `text` alone, with no header at all.
 
 This matters because WhatsApp-forwarded messages — a large share of what
 Kavach actually sees in production — usually arrive with no sender header
 and no visible number. A dataset scored only "with sender" would overstate
 real-world accuracy. Both passes are reported side by side so a gap between
 them is visible rather than averaged away.
+
+## `baseline.json` vs `smoke.json`
+
+`--baseline` normally writes `eval/results/baseline.json`. That name is
+reserved for a run over a real, adequately sized dataset. `run.py` checks
+the row count and per-label class balance before writing: if the dataset has
+fewer than 200 rows, or any of `legit`/`scam`/`unclear` is under 15% of the
+set, it prints a loud warning and writes `smoke.json` instead — even if
+`--baseline` was passed — so a small run never gets filed under the name
+people will trust as the real number. Use `--force-baseline` to override
+this deliberately.
+
+`v1.jsonl` at 40 rows always trips this check.
 
 ## Provenance (`source` field)
 

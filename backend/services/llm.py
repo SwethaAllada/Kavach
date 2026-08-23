@@ -29,7 +29,10 @@ from openai import (
 )
 
 from core.config import settings
+from core.locales_loader import SUPPORTED_LANGUAGES
 from services.rules import SCAM_TAXONOMY, SIGNALS
+
+_LANGUAGE_ENUM = " | ".join(f'"{lang}"' for lang in SUPPORTED_LANGUAGES)
 
 log = logging.getLogger(__name__)
 
@@ -56,17 +59,51 @@ no prose, no code fences) with EXACTLY these fields:
   "signals": list of strings, each one of {SIGNALS},
   "explanation": short string,
   "recommended_action": short string,
-  "detected_language": one of "en" | "hi" | "te"
+  "detected_language": one of {_LANGUAGE_ENUM}
 }}
 
 Rules:
-- Detect the message language. If it is Hindi or Telugu (Devanagari, Telugu
-  script, or transliterated Hinglish/Tenglish), write `explanation` and
-  `recommended_action` in that language. Otherwise write them in English.
+- Detect the message language. If it is one of the other supported languages
+  (Devanagari, Telugu script, or transliterated Hinglish/Tenglish), write
+  `explanation` and `recommended_action` in that language. Otherwise write
+  them in English.
 - Be calibrated: use "likely_safe" with low risk for benign messages
   (e.g. bank OTP delivery, delivery confirmations from real senders).
 - Be decisive on obvious scam patterns (digital arrest, OTP requests,
   KYC blocks, fake courier customs, guaranteed-return investment).
+
+The single most important distinguishing feature between a legit message and
+a scam is WHO is asked to DO something, and WHAT:
+- LEGIT messages INFORM the user and, at most, ask the user to act through a
+  channel THEY already trust (their bank's own app, their own branch, calling
+  the number printed on their card) if something seems wrong. They do not ask
+  the user to hand over a credential, click an unfamiliar link, or send money
+  to "verify" or "unlock" anything.
+- SCAM messages ASK the user to act right now: share an OTP/PIN/CVV with the
+  sender or their "executive", click a link, install an app, or transfer/
+  approve a payment to "verify", "unlock", "claim a refund", or avoid a
+  threatened consequence.
+
+Apply that test explicitly to these common legit shapes — score them
+"likely_safe" with LOW risk even though they mention money, OTPs, or
+deadlines:
+- A bank/merchant SHARING an OTP with the user and warning them not to share
+  it further ("Your OTP is 123456. Do not share this with anyone, including
+  bank officials.") is legit — the warning IS the anti-scam advice, not a
+  scam tactic. Contrast with a message asking the user to share/read out an
+  OTP TO the sender or "our executive" — that is a scam.
+- A delivery OTP or delivery/order notification is legit.
+- A real bank transaction/debit/credit alert that only informs the user of a
+  transaction and, if suspicious, tells them to call/visit their bank
+  themselves — legit, even if it says "call immediately" or mentions an
+  amount.
+- A genuine bill/EMI/premium reminder that points to the official app or
+  website (no link, no OTP/PIN/credential request) — legit.
+- A real KYC reminder that directs the user to their home branch or the
+  bank's own official app — legit. Contrast with a KYC message containing a
+  link to click or asking the user to share an OTP/PIN/Aadhaar number to
+  "complete" KYC — that is a scam (kyc_bank).
+
 - Keep `explanation` under 400 characters.
 - Your response MUST be a single JSON object and nothing else."""
 
@@ -97,7 +134,7 @@ def _validate(parsed: dict) -> dict:
     signals = [s for s in signals if isinstance(s, str) and s in SIGNALS]
 
     lang = parsed.get("detected_language")
-    if lang not in ("en", "hi", "te"):
+    if lang not in SUPPORTED_LANGUAGES:
         lang = "en"
 
     return {

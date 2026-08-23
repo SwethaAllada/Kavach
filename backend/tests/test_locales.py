@@ -56,9 +56,14 @@ def test_locale_matches_schema(code):
 
 @pytest.mark.parametrize("code", sorted(REGISTRY.keys()))
 def test_locale_required_verdict_keys(code):
+    """`verdicts` is optional per _schema.yaml (legacy 5-bucket model with no
+    live consumer — see the schema's comment). A locale that omits it
+    entirely is valid; a locale that INCLUDES it must have all 5 keys."""
     bundle = REGISTRY[code]
+    verdicts = bundle.responses.get("verdicts")
+    if verdicts is None:
+        pytest.skip(f"locales/{code} has no verdicts block (optional per schema)")
     required_verdicts = ["scam", "likely_scam", "unclear", "likely_legit", "legit"]
-    verdicts = bundle.responses.get("verdicts", {})
     for key in required_verdicts:
         assert key in verdicts, (
             f"locales/{code}/responses.yaml verdicts is missing required key '{key}'"

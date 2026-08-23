@@ -22,3 +22,115 @@ verdicts:
 
   digital_arrest_note: "No Indian law enforcement agency arrests anyone over a video call or demands money for 'verification'."
   kyc_note: "Banks and telecom operators never ask you to update KYC by clicking a link sent over SMS or WhatsApp."
+
+# Per-scam_type explanation + recommended_action used by classifier.py's
+# rules-only fallback path (when the LLM is unavailable). Ported verbatim
+# from the previous hardcoded _TEMPLATES dict in classifier.py.
+fallback_templates:
+  digital_arrest:
+    explanation: "Signals of a 'digital arrest' scam: fake authority (police/CBI/ED), fear tactics, and payment demand. Real agencies never arrest over video calls."
+    recommended_action: "Do not pay. Do not stay on the call. Report to 1930 and cybercrime.gov.in."
+  kyc_bank:
+    explanation: "Signals of a KYC/bank scam: urgent account-block warning and a request to verify or share credentials."
+    recommended_action: "Do not click links. Do not share OTP/PIN. Call your bank on the number printed on your card."
+  courier_parcel:
+    explanation: "Signals of a fake courier/customs scam: 'parcel held' and demand for a fee or personal details."
+    recommended_action: "Do not pay. Verify the parcel directly with the courier's official website or app."
+  investment_stock:
+    explanation: "Signals of an investment scam: guaranteed returns, VIP tips, or WhatsApp/Telegram trading groups."
+    recommended_action: "Guaranteed returns do not exist. Do not send money or join paid groups. Report to 1930."
+  lottery_prize:
+    explanation: "Signals of a lottery/prize scam: 'you have won' with a processing-fee or bank-details request."
+    recommended_action: "Do not pay any fee. Do not share bank details. It is a scam."
+  upi_collect_request:
+    explanation: "UPI collect / refund request: scammers get you to APPROVE a payment while promising a refund."
+    recommended_action: "You never scan a QR or approve a request to RECEIVE money. Decline the request."
+  job_task:
+    explanation: "Signals of a task/work-from-home scam: promised earnings for likes/ratings, then a 'prepaid task'."
+    recommended_action: "Do not pay any prepaid task fee. Legitimate jobs never ask you to pay to earn."
+  loan_app:
+    explanation: "Signals of a loan-app scam: instant loan, no documents, upfront processing fee."
+    recommended_action: "Do not pay any advance fee. Use only RBI-registered lenders."
+  tech_support:
+    explanation: "Signals of a tech-support scam: 'your computer is infected' with a request to install remote-access software."
+    recommended_action: "Do not install AnyDesk / TeamViewer for callers. Microsoft never calls you unsolicited."
+  romance:
+    explanation: "Signals of a romance scam: online partner asking for money, gifts, or airport/customs help."
+    recommended_action: "Do not send money to someone you have not met. Report to 1930."
+  deepfake_voice:
+    explanation: "Signals of a deepfake-voice scam: urgent voice message from a 'family member' asking for money."
+    recommended_action: "Call the person back on their known number before sending anything."
+  other:
+    explanation: "This message shows some suspicious signals. Treat it with caution."
+    recommended_action: "Do not share OTPs, do not click links, verify with the official channel."
+  likely_safe:
+    explanation: "No clear scam signals detected. This message looks likely safe, but stay alert."
+    recommended_action: "If in doubt, verify with the sender through a known contact channel."
+
+# Guided-reporting text used by report.py's build_report(). Ported verbatim
+# from _SUMMARIES / _TYPE_HUMAN / _ASK_CLAUSE.
+report:
+  summary_parts:
+    opener: "On [DATE], I received a message/call claiming to be from {entity}."
+    asked: "It asked me to {ask}."
+    belief: "I believe this is a {scam_type_human} scam."
+    payment: "I transferred / was asked to transfer money [AMOUNT] via [UPI/BANK REF]."
+    contact_prefix: "Sender / contact details from the message:"
+    no_contact: "No sender contact details were visible in the message."
+    personal: "My details: [YOUR NAME], [YOUR PHONE], [YOUR CITY]."
+  type_human:
+    digital_arrest: "digital arrest"
+    kyc_bank: "KYC / bank verification"
+    courier_parcel: "fake courier / customs"
+    investment_stock: "investment / stock tip"
+    lottery_prize: "lottery / prize"
+    tech_support: "fake tech support"
+    job_task: "task / part-time job"
+    loan_app: "loan-app"
+    romance: "romance"
+    deepfake_voice: "deepfake voice / family emergency"
+    upi_collect_request: "UPI collect-request"
+    other: "suspicious message"
+  ask_clause:
+    digital_arrest: "stay on a video call and transfer money to a 'verification account'"
+    kyc_bank: "share OTP / click a link to complete KYC"
+    courier_parcel: "pay a customs / clearance fee to release a parcel"
+    investment_stock: "join a trading group / deposit money for guaranteed returns"
+    lottery_prize: "pay a 'processing fee' or share bank details to claim a prize"
+    tech_support: "install remote-access software and share verification codes"
+    job_task: "pay a 'prepaid task' fee to earn higher commissions"
+    loan_app: "pay an upfront processing fee to receive a loan"
+    romance: "send money for an emergency (airport / customs / hospital)"
+    deepfake_voice: "urgently transfer money because a family member is 'in trouble'"
+    upi_collect_request: "approve a UPI collect-request / enter my UPI PIN to 'receive' money"
+    other: "share sensitive information or make an urgent payment"
+
+# WhatsApp reply formatter text used by whatsapp_format.py. Ported verbatim
+# from _SCAM_LABELS / _STRINGS.
+whatsapp:
+  scam_labels:
+    digital_arrest: "Digital Arrest"
+    investment_stock: "Investment / Trading"
+    kyc_bank: "Bank / KYC"
+    courier_parcel: "Courier / Customs"
+    job_task: "Task Job"
+    loan_app: "Loan App"
+    lottery_prize: "Lottery / Prize"
+    tech_support: "Tech Support"
+    upi_collect_request: "UPI Collect Scam"
+    romance: "Romance"
+    deepfake_voice: "Deepfake Voice"
+    other: "Suspicious"
+    likely_safe: "Likely Safe"
+  strings:
+    brand: "Kavach"
+    scam: "⚠️ LIKELY SCAM"
+    caution: "⚠️ Suspicious — be careful"
+    safe: "✅ Looks safe"
+    risk_line: "{headline} — {label} (risk {risk}/100)"
+    why: "Why:"
+    action: "What to do:"
+    report_prefix: "Report now:"
+    summary_available: "A ready-to-file complaint summary is available in the Kavach app."
+    footer: "— Kavach (guidance only; we never file for you)"
+    err: "Sorry, we couldn't analyze that message just now. Please try again in a moment."

@@ -1,0 +1,119 @@
+language: te
+
+# NOTE: the `verdicts` block has no existing Telugu wording anywhere in the
+# codebase to port — see locales/hi/responses.yaml's note; same reasoning
+# applies here. Deliberately left absent rather than inventing new wording.
+# backend/core/locales_loader.get_string() falls back to English for any
+# missing key, so this is safe — no consumer breaks.
+
+# Per-scam_type explanation + recommended_action used by classifier.py's
+# rules-only fallback path. Ported verbatim from the previous hardcoded
+# _TEMPLATES["te"] entries in classifier.py.
+fallback_templates:
+  digital_arrest:
+    explanation: "'డిజిటల్ అరెస్ట్' మోసం సంకేతాలు: నకిలీ అధికారి, భయపెట్టడం, డబ్బు అడగడం. నిజమైన ఏజెన్సీలు వీడియో కాల్‌లో అరెస్ట్ చేయవు."
+    recommended_action: "డబ్బు పంపవద్దు. కాల్ కట్ చేయండి. 1930 మరియు cybercrime.gov.in లో ఫిర్యాదు చేయండి."
+  kyc_bank:
+    explanation: "KYC/బ్యాంక్ మోసం సంకేతాలు: ఖాతా బ్లాక్ హెచ్చరిక, OTP/వివరాలు అడగడం."
+    recommended_action: "లింక్‌లపై క్లిక్ చేయవద్దు. OTP/PIN షేర్ చేయవద్దు. కార్డుపై ఉన్న నంబర్‌కు బ్యాంక్‌ను కాల్ చేయండి."
+  courier_parcel:
+    explanation: "నకిలీ కొరియర్ మోసం సంకేతాలు: 'పార్సెల్ ఆపబడింది' అనీ ఫీజు అడగడం."
+    recommended_action: "డబ్బు చెల్లించవద్దు. అధికారిక కొరియర్ వెబ్‌సైట్/యాప్‌లో స్థితి తనిఖీ చేయండి."
+  investment_stock:
+    explanation: "పెట్టుబడి మోసం సంకేతాలు: గ్యారంటీ లాభాలు, VIP టిప్స్, ట్రేడింగ్ గ్రూప్‌లు."
+    recommended_action: "గ్యారంటీ లాభాలు ఉండవు. డబ్బు పంపవద్దు. 1930 కి ఫిర్యాదు చేయండి."
+  lottery_prize:
+    explanation: "లాటరీ మోసం సంకేతాలు: 'మీరు గెలిచారు' అని ఫీజు లేదా బ్యాంక్ వివరాలు అడగడం."
+    recommended_action: "ఎలాంటి ఫీజు చెల్లించవద్దు. బ్యాంక్ వివరాలు షేర్ చేయవద్దు. ఇది మోసం."
+  upi_collect_request:
+    explanation: "UPI కలెక్ట్/రిఫండ్ మోసం: రిఫండ్ పేరుతో మీచేత చెల్లింపును APPROVE చేయిస్తారు."
+    recommended_action: "డబ్బు అందుకోవడానికి QR స్కాన్ లేదా అభ్యర్థన ఆమోదించాల్సిన అవసరం లేదు. తిరస్కరించండి."
+  job_task:
+    explanation: "టాస్క్/వర్క్-ఫ్రమ్-హోమ్ మోసం సంకేతాలు: లైక్/రేటింగ్‌కి డబ్బు, తర్వాత 'ప్రీపెయిడ్ టాస్క్'."
+    recommended_action: "ప్రీపెయిడ్ టాస్క్ ఫీజు చెల్లించవద్దు. నిజమైన ఉద్యోగాలు మీ నుండి డబ్బు అడగవు."
+  loan_app:
+    explanation: "లోన్ యాప్ మోసం సంకేతాలు: వెంటనే రుణం, డాక్యుమెంట్లు లేవు, ముందస్తు ఫీజు."
+    recommended_action: "ఎలాంటి ముందస్తు ఫీజు చెల్లించవద్దు. RBI-రిజిస్టర్డ్ లెండర్‌లను మాత్రమే ఉపయోగించండి."
+  tech_support:
+    explanation: "టెక్-సపోర్ట్ మోసం సంకేతాలు: 'మీ కంప్యూటర్ ఇన్ఫెక్ట్ అయింది' అని రిమోట్ యాక్సెస్ ఇన్‌స్టాల్ చేయమనడం."
+    recommended_action: "అపరిచితుల కోసం AnyDesk/TeamViewer ఇన్‌స్టాల్ చేయవద్దు."
+  romance:
+    explanation: "రొమాన్స్ మోసం సంకేతాలు: ఆన్‌లైన్ పరిచయస్తులు డబ్బు లేదా కస్టమ్స్ సహాయం అడగడం."
+    recommended_action: "కలవని వారికి డబ్బు పంపవద్దు. 1930 కి ఫిర్యాదు చేయండి."
+  deepfake_voice:
+    explanation: "డీప్‌ఫేక్-వాయిస్ మోసం సంకేతాలు: 'కుటుంబం' నుండి అత్యవసర వాయిస్ మెసేజ్‌లో డబ్బు అడగడం."
+    recommended_action: "డబ్బు పంపే ముందు వారి తెలిసిన నంబర్‌కు మీరే కాల్ చేయండి."
+  other:
+    explanation: "ఈ సందేశంలో అనుమానాస్పద సంకేతాలు ఉన్నాయి. జాగ్రత్తగా ఉండండి."
+    recommended_action: "OTP షేర్ చేయవద్దు, లింక్‌లపై క్లిక్ చేయవద్దు, అధికారిక ఛానెల్‌లో ధృవీకరించండి."
+  likely_safe:
+    explanation: "స్పష్టమైన మోసం సంకేతాలు లేవు. సందేశం సురక్షితంగా కనిపిస్తుంది, అయినా జాగ్రత్తగా ఉండండి."
+    recommended_action: "సందేహం ఉంటే పంపినవారిని తెలిసిన ఛానెల్ ద్వారా ధృవీకరించండి."
+
+# Guided-reporting text used by report.py's build_report(). Ported verbatim
+# from _SUMMARIES["te"] / _TYPE_HUMAN[*]["te"] / _ASK_CLAUSE[*]["te"].
+report:
+  summary_parts:
+    opener: "[తేదీ] న నాకు {entity} నుండి అని చెప్పుకుంటూ ఒక సందేశం/కాల్ వచ్చింది."
+    asked: "అది నన్ను {ask} చేయమని అడిగింది."
+    belief: "ఇది {scam_type_human} మోసం అని నేను భావిస్తున్నాను."
+    payment: "నేను [మొత్తం] రూపాయలు [UPI/బ్యాంక్ వివరాలు] ద్వారా పంపాను / పంపమని అడిగారు."
+    contact_prefix: "సందేశంలో కనిపించిన పంపినవారి / సంప్రదింపు వివరాలు:"
+    no_contact: "సందేశంలో పంపినవారి సంప్రదింపు వివరాలు కనిపించలేదు."
+    personal: "నా వివరాలు: [మీ పేరు], [మీ ఫోన్], [మీ నగరం]."
+  type_human:
+    digital_arrest: "డిజిటల్ అరెస్ట్"
+    kyc_bank: "KYC / బ్యాంక్"
+    courier_parcel: "నకిలీ కొరియర్ / కస్టమ్స్"
+    investment_stock: "పెట్టుబడి / స్టాక్ టిప్"
+    lottery_prize: "లాటరీ / బహుమతి"
+    tech_support: "నకిలీ టెక్-సపోర్ట్"
+    job_task: "టాస్క్ / పార్ట్-టైమ్ ఉద్యోగం"
+    loan_app: "లోన్ యాప్"
+    romance: "రొమాన్స్"
+    deepfake_voice: "డీప్‌ఫేక్ వాయిస్"
+    upi_collect_request: "UPI కలెక్ట్-రిక్వెస్ట్"
+    other: "అనుమానాస్పద సందేశం"
+  ask_clause:
+    digital_arrest: "వీడియో కాల్‌లో ఉండి 'వెరిఫికేషన్ ఖాతా'కు డబ్బు పంపాలని"
+    kyc_bank: "OTP షేర్ / KYC లింక్ క్లిక్"
+    courier_parcel: "పార్సెల్ విడుదల కోసం కస్టమ్స్/క్లియరెన్స్ ఫీజు చెల్లించమని"
+    investment_stock: "ట్రేడింగ్ గ్రూప్‌లో చేరమని / గ్యారంటీ లాభాల కోసం డబ్బు జమ చేయమని"
+    lottery_prize: "బహుమతి పొందడానికి 'ప్రాసెసింగ్ ఫీజు' చెల్లించమని లేదా బ్యాంక్ వివరాలు షేర్ చేయమని"
+    tech_support: "రిమోట్-యాక్సెస్ సాఫ్ట్‌వేర్ ఇన్‌స్టాల్ చేయమని మరియు వెరిఫికేషన్ కోడ్‌లను షేర్ చేయమని"
+    job_task: "ఎక్కువ సంపాదన కోసం 'ప్రీపెయిడ్ టాస్క్' ఫీజు చెల్లించమని"
+    loan_app: "రుణం పొందడానికి ముందస్తు ప్రాసెసింగ్ ఫీజు చెల్లించమని"
+    romance: "అత్యవసరం (విమానాశ్రయం/కస్టమ్స్/హాస్పిటల్) కోసం డబ్బు పంపాలని"
+    deepfake_voice: "'కుటుంబ సభ్యుడు కష్టంలో ఉన్నారు' అనే పేరుతో వెంటనే డబ్బు పంపమని"
+    upi_collect_request: "డబ్బు 'అందుకోవడానికి' UPI కలెక్ట్-రిక్వెస్ట్ ఆమోదించమని / UPI PIN నమోదు చేయమని"
+    other: "సున్నితమైన సమాచారాన్ని షేర్ చేయమని లేదా వెంటనే చెల్లించమని"
+
+# WhatsApp reply formatter text used by whatsapp_format.py. Ported verbatim
+# from _SCAM_LABELS[*]["te"] / _STRINGS["te"].
+whatsapp:
+  scam_labels:
+    digital_arrest: "డిజిటల్ అరెస్ట్"
+    investment_stock: "పెట్టుబడి / ట్రేడింగ్"
+    kyc_bank: "బ్యాంక్ / KYC"
+    courier_parcel: "కొరియర్ / కస్టమ్స్"
+    job_task: "టాస్క్ ఉద్యోగం"
+    loan_app: "లోన్ యాప్"
+    lottery_prize: "లాటరీ / బహుమతి"
+    tech_support: "టెక్ సపోర్ట్"
+    upi_collect_request: "UPI కలెక్ట్"
+    romance: "రొమాన్స్"
+    deepfake_voice: "డీప్‌ఫేక్ వాయిస్"
+    other: "అనుమానాస్పద"
+    likely_safe: "సురక్షితం"
+  strings:
+    brand: "Kavach"
+    scam: "⚠️ మోసం అని అనుమానం"
+    caution: "⚠️ అనుమానాస్పదం — జాగ్రత్తగా ఉండండి"
+    safe: "✅ సురక్షితంగా కనిపిస్తుంది"
+    risk_line: "{headline} — {label} (రిస్క్ {risk}/100)"
+    why: "ఎందుకు:"
+    action: "ఏం చేయాలి:"
+    report_prefix: "ఇప్పుడే ఫిర్యాదు చేయండి:"
+    summary_available: "సిద్ధంగా ఉన్న ఫిర్యాదు సారాంశం Kavach యాప్‌లో లభిస్తుంది."
+    footer: "— Kavach (మార్గదర్శకం మాత్రమే; మేము మీ తరపున ఫిర్యాదు చేయము)"
+    err: "క్షమించండి, ప్రస్తుతం సందేశాన్ని విశ్లేషించలేకపోయాం. దయచేసి కొద్దిసేపటి తర్వాత ప్రయత్నించండి."

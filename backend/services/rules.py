@@ -165,7 +165,7 @@ SIGNAL_PATTERNS: dict[str, list[str]] = {
         r"జైలు|అరెస్ట్|చట్టపరమైన",
     ],
     "isolation": [
-        r"do\s*not\s*(?:tell|inform|share).*(?:family|anyone|friends)",
+        r"do\s*not\s*(?:tell|inform|share).*(?:family|friends)",
         r"stay\s*on\s*(?:the\s*)?(?:call|line)",
         r"don'?t\s*(?:hang\s*up|disconnect)",
         r"किसी\s*को\s*(?:मत\s*बताना|मत\s*बताएं)",
@@ -187,7 +187,7 @@ SIGNAL_PATTERNS: dict[str, list[str]] = {
     ],
     "secrecy": [
         r"confidential|classified|between\s*(?:you\s*and\s*me|us)",
-        r"do\s*not\s*(?:disclose|share)\s*this",
+        r"do\s*not\s*(?:disclose|share)\s*this\s*(?:with|from)\s*(?:anyone|your\s*family|the\s*bank|police)",
         r"गुप्त|राज़",
         r"రహస్యం",
     ],
@@ -218,6 +218,99 @@ def _find_matches(text: str, patterns: Iterable[str]) -> list[str]:
         if m:
             found.append(m.group(0))
     return found
+
+
+# ---------------------------------------------------------------------------
+# Negative evidence: patterns that make a message LESS likely to be a scam.
+#
+# These only ever SUBTRACT from rule_risk (see rules_classify below) — they
+# never force scam_type to likely_safe and never delete a matched signal.
+# The rules prior is one input to classifier._fuse(); a lower prior lets the
+# LLM and RAG still override if the message is actually a scam wearing a
+# legit disguise. This mirrors the RAG safe-lock discipline in
+# classifier.py: nudge, don't decide.
+#
+# Each entry is (regex, points). Points are summed and the total is capped
+# by _NEGATIVE_EVIDENCE_CAP before being subtracted from rule_risk.
+# ---------------------------------------------------------------------------
+
+# The defining distinction for OTP messages is WHO is asked to act:
+#   - legit: the message informs the user of an OTP and instructs THEM not
+#     to share it with anyone else (a warning about the user's own future
+#     behavior).
+#   - scam: the message asks the user to hand the OTP TO THE SENDER (an
+#     "executive", "officer", "team", or unspecified "us") right now.
+# `_OTP_HARVEST_RE` is checked first and unconditionally suppresses the
+# negative-evidence nudge if it matches, so a scam message that pastes both
+# phrases ("share your OTP... but also never share your OTP!") to game this
+# heuristic still scores as risky.
+_OTP_HARVEST_RE = re.compile(
+    r"(?:share|read\s*out|tell|give|provide)\s*(?:the|your|this)?\s*otp"
+    r"\s*(?:to|with)\s*(?:our|the|any)?\s*(?:executive|officer|agent|team|"
+    r"representative|us|customer\s*care|support)",
+    re.IGNORECASE,
+)
+
+_NEGATIVE_PATTERNS: list[tuple[re.Pattern, int]] = [
+    # "NEVER share this OTP with anyone" / "do not share this OTP with
+    # anyone" — an advisory aimed at the user's own future behavior, not a
+    # request for the user to hand over anything now.
+    (
+        re.compile(
+            r"(?:never|do\s*not|don'?t)\s*share\s*(?:this|your|the)?\s*otp"
+            r".{0,30}with\s*anyone",
+            re.IGNORECASE,
+        ),
+        15,
+    ),
+    (re.compile(r"साझा\s*न\s*करें", re.IGNORECASE), 15),
+    # "Bank will never call and ask for this OTP" — the message itself
+    # states the anti-scam rule, which is the opposite of a scammer asking
+    # for the OTP.
+    (
+        re.compile(
+            r"bank\s*will\s*never\s*(?:call|ask)", re.IGNORECASE
+        ),
+        15,
+    ),
+    # Informational transaction/security alert that tells the user to call
+    # a support line THEMSELVES if something looks wrong — contrasts with a
+    # scam's "click this link" / "approve this request" / "pay this fee".
+    (
+        re.compile(
+            r"if\s*this\s*(?:transaction\s*)?wasn'?t\s*you.{0,40}"
+            r"(?:call|visit)|"
+            r"call\s*[\d\-\s]{6,}\s*immediately\s*if\s*this",
+            re.IGNORECASE,
+        ),
+        12,
+    ),
+    # KYC / bill reminders that point to the bank's OWN official app or
+    # branch, with no link and no OTP/PIN/credential request — contrasts
+    # with a scam KYC message's "click this link to verify" / "share OTP".
+    (
+        re.compile(
+            r"(?:visit\s*(?:your\s*)?(?:home\s*)?branch|official\s*"
+            r"(?:app|mobile\s*app|website))",
+            re.IGNORECASE,
+        ),
+        10,
+    ),
+]
+
+_NEGATIVE_EVIDENCE_CAP = 30
+
+
+def _negative_evidence_score(text: str) -> int:
+    """Sum bounded negative-evidence points. Never applied if the message
+    also contains an explicit OTP-harvesting ask (see _OTP_HARVEST_RE)."""
+    if _OTP_HARVEST_RE.search(text):
+        return 0
+    total = 0
+    for pattern, points in _NEGATIVE_PATTERNS:
+        if pattern.search(text):
+            total += points
+    return min(total, _NEGATIVE_EVIDENCE_CAP)
 
 
 def rules_classify(text: str) -> dict:
@@ -255,6 +348,12 @@ def rules_classify(text: str) -> dict:
         rule_risk = max(0, signal_score - 20)
     else:
         rule_risk = min(100, 20 + signal_score + scam_score)
+
+    # Negative evidence only ever lowers the prior — it never changes
+    # scam_type and never removes a matched signal (matched_keywords /
+    # matched_signals are left intact so callers can still see why the
+    # positive signals fired).
+    rule_risk = max(0, rule_risk - _negative_evidence_score(text))
 
     return {
         "scam_type": best_scam,

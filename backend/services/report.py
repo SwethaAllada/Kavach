@@ -6,7 +6,7 @@ and a scam-type-specific evidence checklist. Never submits anything anywhere.
 
 Design constraints:
   - Language-aware: prefilled_summary is written in verdict.detected_language
-    (en | hi | te), falling back to English.
+    (see core.locales_loader.SUPPORTED_LANGUAGES), falling back to English.
   - Never fabricates data. Amount, date, personal info are left as clearly
     marked [PLACEHOLDERS] the user fills in.
   - No network calls, no external I/O, no `httpx` / `requests` — this module
@@ -19,6 +19,8 @@ from __future__ import annotations
 import logging
 import re
 from typing import Optional
+
+from core.locales_loader import get_string
 
 log = logging.getLogger(__name__)
 
@@ -116,135 +118,13 @@ def _extract_contact_hints(text: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Language-specific summary templates
+# Language-specific summary templates (summary_parts, type_human, ask_clause)
+# now live in locales/<lang>/responses.yaml under `report`, read via
+# core.locales_loader.get_string() — see _build_summary() below. Each key is
+# looked up independently, so a locale missing just one key (e.g. ask_clause
+# for a given scam_type) falls back to English for that key alone rather
+# than failing the whole summary.
 # ---------------------------------------------------------------------------
-
-_SUMMARIES = {
-    "en": {
-        "opener": "On [DATE], I received a message/call claiming to be from {entity}.",
-        "asked": "It asked me to {ask}.",
-        "belief": "I believe this is a {scam_type_human} scam.",
-        "payment": "I transferred / was asked to transfer money [AMOUNT] via [UPI/BANK REF].",
-        "contact_prefix": "Sender / contact details from the message:",
-        "no_contact": "No sender contact details were visible in the message.",
-        "personal": "My details: [YOUR NAME], [YOUR PHONE], [YOUR CITY].",
-    },
-    "hi": {
-        "opener": "[तारीख] को मुझे {entity} बनकर एक संदेश/कॉल मिला।",
-        "asked": "उसने मुझसे {ask} के लिए कहा।",
-        "belief": "मुझे लगता है यह {scam_type_human} घोटाला है।",
-        "payment": "मैंने [राशि] रुपये [UPI/बैंक विवरण] के माध्यम से भेजे / भेजने को कहा गया।",
-        "contact_prefix": "संदेश में दिखे प्रेषक/संपर्क विवरण:",
-        "no_contact": "संदेश में कोई प्रेषक संपर्क विवरण नहीं मिला।",
-        "personal": "मेरा विवरण: [आपका नाम], [आपका फ़ोन], [आपका शहर]।",
-    },
-    "te": {
-        "opener": "[తేదీ] న నాకు {entity} నుండి అని చెప్పుకుంటూ ఒక సందేశం/కాల్ వచ్చింది.",
-        "asked": "అది నన్ను {ask} చేయమని అడిగింది.",
-        "belief": "ఇది {scam_type_human} మోసం అని నేను భావిస్తున్నాను.",
-        "payment": "నేను [మొత్తం] రూపాయలు [UPI/బ్యాంక్ వివరాలు] ద్వారా పంపాను / పంపమని అడిగారు.",
-        "contact_prefix": "సందేశంలో కనిపించిన పంపినవారి / సంప్రదింపు వివరాలు:",
-        "no_contact": "సందేశంలో పంపినవారి సంప్రదింపు వివరాలు కనిపించలేదు.",
-        "personal": "నా వివరాలు: [మీ పేరు], [మీ ఫోన్], [మీ నగరం].",
-    },
-}
-
-
-# Human-friendly rendering of scam_type in each language.
-_TYPE_HUMAN = {
-    "digital_arrest": {
-        "en": "digital arrest", "hi": "डिजिटल अरेस्ट", "te": "డిజిటల్ అరెస్ట్"},
-    "kyc_bank": {
-        "en": "KYC / bank verification", "hi": "KYC / बैंक", "te": "KYC / బ్యాంక్"},
-    "courier_parcel": {
-        "en": "fake courier / customs", "hi": "नकली कूरियर / कस्टम", "te": "నకిలీ కొరియర్ / కస్టమ్స్"},
-    "investment_stock": {
-        "en": "investment / stock tip", "hi": "निवेश / स्टॉक टिप", "te": "పెట్టుబడి / స్టాక్ టిప్"},
-    "lottery_prize": {
-        "en": "lottery / prize", "hi": "लॉटरी / इनाम", "te": "లాటరీ / బహుమతి"},
-    "tech_support": {
-        "en": "fake tech support", "hi": "नकली टेक-सपोर्ट", "te": "నకిలీ టెక్-సపోర్ట్"},
-    "job_task": {
-        "en": "task / part-time job", "hi": "टास्क / पार्ट-टाइम जॉब", "te": "టాస్క్ / పార్ట్-టైమ్ ఉద్యోగం"},
-    "loan_app": {
-        "en": "loan-app", "hi": "लोन ऐप", "te": "లోన్ యాప్"},
-    "romance": {"en": "romance", "hi": "रोमांस", "te": "రొమాన్స్"},
-    "deepfake_voice": {
-        "en": "deepfake voice / family emergency", "hi": "डीपफेक वॉइस", "te": "డీప్‌ఫేక్ వాయిస్"},
-    "upi_collect_request": {
-        "en": "UPI collect-request", "hi": "UPI कलेक्ट-रिक्वेस्ट", "te": "UPI కలెక్ట్-రిక్వెస్ట్"},
-    "other": {"en": "suspicious message", "hi": "संदिग्ध संदेश", "te": "అనుమానాస్పద సందేశం"},
-}
-
-
-# "asked to..." action clause, per scam_type + language.
-_ASK_CLAUSE = {
-    "digital_arrest": {
-        "en": "stay on a video call and transfer money to a 'verification account'",
-        "hi": "वीडियो कॉल पर बने रहने और 'वेरिफिकेशन खाते' में पैसे भेजने",
-        "te": "వీడియో కాల్‌లో ఉండి 'వెరిఫికేషన్ ఖాతా'కు డబ్బు పంపాలని",
-    },
-    "kyc_bank": {
-        "en": "share OTP / click a link to complete KYC",
-        "hi": "OTP साझा करने / KYC लिंक पर क्लिक करने",
-        # NOTE: the Telugu `asked` template appends " చేయమని అడిగింది." after this
-        # fragment, so the fragment itself must NOT end in "చేయమని" — otherwise
-        # you get "…చేయమని చేయమని అడిగింది." Kept as a bare noun phrase to slot in
-        # cleanly: "అది నన్ను OTP షేర్ / KYC లింక్ క్లిక్ చేయమని అడిగింది."
-        "te": "OTP షేర్ / KYC లింక్ క్లిక్",
-    },
-    "courier_parcel": {
-        "en": "pay a customs / clearance fee to release a parcel",
-        "hi": "पार्सल छुड़ाने के लिए कस्टम/क्लीयरेंस शुल्क देने",
-        "te": "పార్సెల్ విడుదల కోసం కస్టమ్స్/క్లియరెన్స్ ఫీజు చెల్లించమని",
-    },
-    "investment_stock": {
-        "en": "join a trading group / deposit money for guaranteed returns",
-        "hi": "ट्रेडिंग ग्रुप जॉइन करने / गारंटीड रिटर्न के लिए पैसे जमा करने",
-        "te": "ట్రేడింగ్ గ్రూప్‌లో చేరమని / గ్యారంటీ లాభాల కోసం డబ్బు జమ చేయమని",
-    },
-    "lottery_prize": {
-        "en": "pay a 'processing fee' or share bank details to claim a prize",
-        "hi": "इनाम पाने के लिए 'प्रोसेसिंग फीस' देने या बैंक विवरण साझा करने",
-        "te": "బహుమతి పొందడానికి 'ప్రాసెసింగ్ ఫీజు' చెల్లించమని లేదా బ్యాంక్ వివరాలు షేర్ చేయమని",
-    },
-    "tech_support": {
-        "en": "install remote-access software and share verification codes",
-        "hi": "रिमोट-एक्सेस सॉफ्टवेयर इंस्टॉल करने और वेरिफिकेशन कोड साझा करने",
-        "te": "రిమోట్-యాక్సెస్ సాఫ్ట్‌వేర్ ఇన్‌స్టాల్ చేయమని మరియు వెరిఫికేషన్ కోడ్‌లను షేర్ చేయమని",
-    },
-    "job_task": {
-        "en": "pay a 'prepaid task' fee to earn higher commissions",
-        "hi": "अधिक कमाई के लिए 'प्रीपेड टास्क' शुल्क देने",
-        "te": "ఎక్కువ సంపాదన కోసం 'ప్రీపెయిడ్ టాస్క్' ఫీజు చెల్లించమని",
-    },
-    "loan_app": {
-        "en": "pay an upfront processing fee to receive a loan",
-        "hi": "लोन पाने के लिए अग्रिम प्रोसेसिंग शुल्क देने",
-        "te": "రుణం పొందడానికి ముందస్తు ప్రాసెసింగ్ ఫీజు చెల్లించమని",
-    },
-    "romance": {
-        "en": "send money for an emergency (airport / customs / hospital)",
-        "hi": "आपात स्थिति (हवाई अड्डा/कस्टम/अस्पताल) के लिए पैसे भेजने",
-        "te": "అత్యవసరం (విమానాశ్రయం/కస్టమ్స్/హాస్పిటల్) కోసం డబ్బు పంపాలని",
-    },
-    "deepfake_voice": {
-        "en": "urgently transfer money because a family member is 'in trouble'",
-        "hi": "'परिवार के सदस्य की मुसीबत' के नाम पर तुरंत पैसे भेजने",
-        "te": "'కుటుంబ సభ్యుడు కష్టంలో ఉన్నారు' అనే పేరుతో వెంటనే డబ్బు పంపమని",
-    },
-    "upi_collect_request": {
-        "en": "approve a UPI collect-request / enter my UPI PIN to 'receive' money",
-        "hi": "पैसे 'प्राप्त' करने के लिए UPI कलेक्ट-रिक्वेस्ट अप्रूव करने / UPI PIN डालने",
-        "te": "డబ్బు 'అందుకోవడానికి' UPI కలెక్ట్-రిక్వెస్ట్ ఆమోదించమని / UPI PIN నమోదు చేయమని",
-    },
-    "other": {
-        "en": "share sensitive information or make an urgent payment",
-        "hi": "संवेदनशील जानकारी साझा करने या तुरंत भुगतान करने",
-        "te": "సున్నితమైన సమాచారాన్ని షేర్ చేయమని లేదా వెంటనే చెల్లించమని",
-    },
-}
-
 
 # ---------------------------------------------------------------------------
 # Evidence checklist per scam_type
@@ -356,27 +236,45 @@ def _pick_urgency(scam_type: str, risk: int, signals: list) -> str:
     return "standard"
 
 
+# Hardcoded English backstops for _build_summary's get_string() calls — the
+# ultimate fallback if locales/ itself is missing/broken, so a summary is
+# always producible. Each summary_parts key falls back independently:
+# requested language -> English -> this literal.
+_SUMMARY_PART_DEFAULTS = {
+    "opener": "On [DATE], I received a message/call claiming to be from {entity}.",
+    "asked": "It asked me to {ask}.",
+    "belief": "I believe this is a {scam_type_human} scam.",
+    "payment": "I transferred / was asked to transfer money [AMOUNT] via [UPI/BANK REF].",
+    "contact_prefix": "Sender / contact details from the message:",
+    "no_contact": "No sender contact details were visible in the message.",
+    "personal": "My details: [YOUR NAME], [YOUR PHONE], [YOUR CITY].",
+}
+
+
+def _summary_part(lang: str, key: str) -> str:
+    return get_string(lang, "report", "summary_parts", key, default=_SUMMARY_PART_DEFAULTS[key])
+
+
 def _build_summary(
     scam_type: str,
     detected_language: str,
     original_text: str,
     hints: dict,
 ) -> str:
-    lang = detected_language if detected_language in _SUMMARIES else "en"
-    t = _SUMMARIES[lang]
+    lang = detected_language
     entity = _guess_impersonated_entity(scam_type, original_text)
-    scam_human = (_TYPE_HUMAN.get(scam_type) or _TYPE_HUMAN["other"]).get(lang, scam_type)
-    ask = (_ASK_CLAUSE.get(scam_type) or _ASK_CLAUSE["other"]).get(lang, "")
+    scam_human = get_string(lang, "report", "type_human", scam_type, default=scam_type)
+    ask = get_string(lang, "report", "ask_clause", scam_type, default="")
 
     parts: list[str] = []
-    parts.append(t["opener"].format(entity=entity))
+    parts.append(_summary_part(lang, "opener").format(entity=entity))
     if ask:
-        parts.append(t["asked"].format(ask=ask))
-    parts.append(t["belief"].format(scam_type_human=scam_human))
+        parts.append(_summary_part(lang, "asked").format(ask=ask))
+    parts.append(_summary_part(lang, "belief").format(scam_type_human=scam_human))
 
     # Payment clause: only include when the engine or the text signal it.
     if "payment" in (hints.get("_signals") or []) or hints.get("_risk", 0) >= 85:
-        parts.append(t["payment"])
+        parts.append(_summary_part(lang, "payment"))
 
     contact_bits: list[str] = []
     if hints["phones"]:
@@ -386,11 +284,11 @@ def _build_summary(
     if hints["urls"]:
         contact_bits.append("link(s): " + ", ".join(hints["urls"]))
     if contact_bits:
-        parts.append(t["contact_prefix"] + " " + "; ".join(contact_bits) + ".")
+        parts.append(_summary_part(lang, "contact_prefix") + " " + "; ".join(contact_bits) + ".")
     else:
-        parts.append(t["no_contact"])
+        parts.append(_summary_part(lang, "no_contact"))
 
-    parts.append(t["personal"])
+    parts.append(_summary_part(lang, "personal"))
     return " ".join(parts)
 
 
