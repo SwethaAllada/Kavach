@@ -7,8 +7,12 @@ Verdict so the request path stays 200.
 
 from __future__ import annotations
 
+import datetime
+import hashlib
 import logging
 import re
+import secrets
+import string
 from typing import Optional
 
 from core import privacy as privacy_module
@@ -16,9 +20,14 @@ from core.locales_loader import SUPPORTED_LANGUAGES, get_string
 from services import llm as llm_service
 from services import rag as rag_service
 from services import report as report_service
+from services import reputation as reputation_service
 from services import store as store_service
 from services.llm import LLMUnavailable
 from services.rules import SCAM_TAXONOMY, rules_classify
+
+# Cap on how much a phishing URL finding can raise risk — a second
+# deterministic signal source augments the decision, it never overrides it.
+_URL_REP_RISK_BUMP = 8
 
 # Bounds on the RAG confidence nudge — never allowed to move confidence by
 # more than this in either direction. Retrieval augments; it does not decide.
@@ -27,6 +36,34 @@ _RAG_CONF_NUDGE_CAP = 0.10
 # RAG can populate matched_patterns for transparency but MUST NOT flip the
 # decision or bump risk. Protects the false-positive rate.
 _SAFE_LOCK_CONFIDENCE = 0.70
+
+
+def _confidence_bucket(confidence) -> str:
+    """>0.8 -> high, 0.5-0.8 -> medium, <0.5 -> low. Invalid input -> low."""
+    try:
+        c = float(confidence)
+    except (TypeError, ValueError):
+        return "low"
+    if c > 0.8:
+        return "high"
+    if c >= 0.5:
+        return "medium"
+    return "low"
+
+
+_CASE_ID_ALPHABET = string.ascii_uppercase + string.digits
+
+
+def _generate_case_id() -> str:
+    """KAV-YYYYMMDD-XXXX — a short, human-readable case ID for legal
+    admissibility. XXXX is 4 random uppercase alphanumeric chars, drawn
+    directly from [A-Z0-9] (secrets.token_urlsafe's base64 alphabet includes
+    '-'/'_', which would violate the format), collisions are astronomically
+    unlikely and not de-duped (see audit_log's case_id PRIMARY KEY, which
+    would reject a genuine collision rather than silently overwrite)."""
+    date = datetime.date.today().strftime("%Y%m%d")
+    suffix = "".join(secrets.choice(_CASE_ID_ALPHABET) for _ in range(4))
+    return f"KAV-{date}-{suffix}"
 
 log = logging.getLogger(__name__)
 
@@ -315,6 +352,43 @@ def _apply_rag(verdict: dict, hits: list[dict]) -> dict:
     return verdict
 
 
+def _apply_url_reputation(verdict: dict, text: str) -> dict:
+    """Augment `verdict` with URL reputation signals (PhishTank), a second
+    deterministic signal source alongside the rules engine.
+
+    Always sets verdict["artifacts"]["url_reputation"] (additive — does not
+    touch the existing artifacts["urls"] raw-URL-string field). If any
+    checked URL is "phishing": appends "phishing_url" to signals (if not
+    already present) and nudges risk up by at most _URL_REP_RISK_BUMP,
+    capped at 100. Never changes scam_type or confidence, and only appends
+    "+url_rep" to decision_source when a URL was actually checked (even if
+    it came back "clean"/"unknown" — the source was still consulted).
+
+    "phishing_url" is deliberately NOT added to services.rules.SIGNALS: that
+    list is interpolated directly into llm.py's SYSTEM_PROMPT and used as
+    its own output allowlist, so anything added there becomes something the
+    LLM is told about and may emit from its own reasoning — which would
+    defeat the point of this being a *deterministic* PhishTank-only signal.
+    Keeping it out of SIGNALS means "phishing_url" in verdict["signals"]
+    can only ever come from an actual PhishTank "phishing" hit here.
+    """
+    url_signals = reputation_service.get_url_signals(text)
+    verdict.setdefault("artifacts", {})["url_reputation"] = url_signals
+
+    if not url_signals:
+        return verdict
+
+    verdict["decision_source"] = f"{verdict['decision_source']}+url_rep"
+
+    if any(s.get("status") == "phishing" for s in url_signals):
+        signals = verdict.setdefault("signals", [])
+        if "phishing_url" not in signals:
+            signals.append("phishing_url")
+        verdict["risk"] = min(100, verdict["risk"] + _URL_REP_RISK_BUMP)
+
+    return verdict
+
+
 def analyze(text: str, language: Optional[str] = None, sender: Optional[str] = None) -> dict:
     """Public entry point. Always returns a valid Verdict dict; never raises.
 
@@ -326,13 +400,16 @@ def analyze(text: str, language: Optional[str] = None, sender: Optional[str] = N
     """
     text = text or ""
     detected_language = _detect_language(text, language)
+    case_id = _generate_case_id()
 
     # 1. Deterministic prior — always runs.
     try:
         rules_out = rules_classify(text)
     except Exception as e:
         log.exception("rules_classify unexpectedly failed: %s", e)
-        return _safe_verdict(text, detected_language)
+        verdict = _safe_verdict(text, detected_language)
+        verdict["case_id"] = case_id
+        return verdict
 
     # 2. Retrieval — always runs, never blocks. Used to (a) ground the LLM
     #    prompt, (b) populate matched_patterns after the decision.
@@ -353,7 +430,9 @@ def analyze(text: str, language: Optional[str] = None, sender: Optional[str] = N
         try:
             verdict = _fallback_from_rules(rules_out, text, detected_language)
         except Exception:
-            return _safe_verdict(text, detected_language)
+            verdict = _safe_verdict(text, detected_language)
+            verdict["case_id"] = case_id
+            return verdict
 
     # 4. Attach retrieval evidence. Never overrides the decision above.
     try:
@@ -361,6 +440,16 @@ def analyze(text: str, language: Optional[str] = None, sender: Optional[str] = N
     except Exception as e:
         log.warning("rag augmentation failed (swallowed): %s", e)
         verdict.setdefault("matched_patterns", [])
+
+    # 4b. URL reputation — second deterministic signal source (PhishTank).
+    # Purely additive: never raises (get_url_signals swallows its own
+    # errors), never overrides scam_type/confidence, only nudges risk up by
+    # a small capped amount and appends to signals/decision_source.
+    try:
+        verdict = _apply_url_reputation(verdict, text)
+    except Exception as e:
+        log.warning("url reputation augmentation failed (swallowed): %s", e)
+        verdict.setdefault("artifacts", {}).setdefault("url_reputation", [])
 
     # 5. Guided reporting. Purely additive: reads verdict + original text,
     #    writes only verdict["report"]. Never raises into the request path
@@ -374,6 +463,8 @@ def analyze(text: str, language: Optional[str] = None, sender: Optional[str] = N
             "report", {"channels": REPORT_CHANNELS, "prefilled_summary": ""}
         )
 
+    verdict["case_id"] = case_id
+
     # 6. Anonymized telemetry — fire-and-forget. Reads a whitelisted subset
     #    of the verdict, never sees the original text. Any failure below
     #    is swallowed; the returned verdict is byte-identical whether or
@@ -383,6 +474,30 @@ def analyze(text: str, language: Optional[str] = None, sender: Optional[str] = N
         store_service.log_signal(record)
     except Exception as e:
         log.warning("telemetry failed (swallowed): %s", e)
+
+    # 7. Legal-admissibility audit trail — fire-and-forget, separate table
+    # and separate (wider) field contract from the 5-field signals table
+    # above (see store.log_audit_record's docstring). input_hash is a
+    # one-way SHA-256 of the message text, never the text itself, so a user
+    # can later prove their message was analyzed without us persisting it.
+    try:
+        input_hash = hashlib.sha256(text.encode()).hexdigest()
+        matched_pattern_ids = ",".join(
+            str(m.get("id")) for m in verdict.get("matched_patterns") or [] if m.get("id")
+        )
+        store_service.log_audit_record({
+            "case_id": case_id,
+            "scam_type": verdict.get("scam_type"),
+            "risk_bucket": privacy_module.to_anonymized_record(verdict).get("risk_bucket"),
+            "confidence_bucket": _confidence_bucket(verdict.get("confidence")),
+            "decision_source": verdict.get("decision_source"),
+            "detected_language": verdict.get("detected_language"),
+            "matched_pattern_ids": matched_pattern_ids,
+            "fallback_used": bool(verdict.get("fallback_used", False)),
+            "input_hash": input_hash,
+        })
+    except Exception as e:
+        log.warning("audit log failed (swallowed): %s", e)
 
     return verdict
 

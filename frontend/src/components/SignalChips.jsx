@@ -8,6 +8,7 @@ const SIGNAL_LABEL = {
   secrecy: 'Secrecy pressure',
   too_good_to_be_true: 'Too good to be true',
   credential_request: 'Asks for OTP / password',
+  phishing_url: 'Known phishing link (PhishTank)',
 }
 
 // authority/fear/payment/credential_request = danger tint;
@@ -21,6 +22,7 @@ const SIGNAL_TONE = {
   secrecy: 'warn',
   urgency: 'warn',
   too_good_to_be_true: 'warn',
+  phishing_url: 'danger',
 }
 
 export default function SignalChips({ signals = [] }) {

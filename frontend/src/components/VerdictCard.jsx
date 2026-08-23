@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import RiskMeter from './RiskMeter'
 import SignalChips from './SignalChips'
 import ReportSection from './ReportSection'
@@ -57,6 +57,74 @@ function useUiLang(detectedLanguage) {
   return uiLang === 'auto' ? (detectedLanguage || 'en') : uiLang
 }
 
+// Small, muted footer: case ID + when it was analyzed, with a copy button.
+// This is the legal-admissibility story made visible — the same case_id can
+// be looked up later via GET /case/{case_id}.
+function CaseIdFooter({ caseId }) {
+  const [copied, setCopied] = useState(false)
+  // Captured once per verdict render, not re-computed on every re-render.
+  const analyzedAt = useMemo(
+    () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    [caseId]
+  )
+
+  if (!caseId) return null
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(caseId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard API unavailable (older browser, non-HTTPS) — fail silently,
+      // the case ID is still visible as plain text to copy manually.
+    }
+  }
+
+  return (
+    <div className="case-id-footer">
+      <span>Case ID: {caseId} · Analyzed at {analyzedAt}</span>
+      <button
+        type="button"
+        className="case-id-copy-btn"
+        onClick={handleCopy}
+        aria-label="Copy case ID"
+        title="Copy case ID"
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  )
+}
+
+function truncateUrl(url, max = 40) {
+  if (!url || url.length <= max) return url
+  return url.slice(0, max - 1) + '…'
+}
+
+// URLs the backend checked against PhishTank. Only shown when a URL is
+// flagged "phishing" or came back "unknown" — clean URLs are not
+// interesting enough to surface.
+function UrlReputationList({ urlReputation = [] }) {
+  const flagged = urlReputation.filter((u) => u.status && u.status !== 'clean')
+  if (flagged.length === 0) return null
+
+  return (
+    <ul className="url-reputation-list">
+      {flagged.map((u, i) => (
+        <li className="url-reputation-item" key={u.url || i}>
+          <code className="url-reputation-url" title={u.url}>{truncateUrl(u.url)}</code>
+          {u.status === 'phishing' ? (
+            <span className="url-badge url-badge-phishing">⚠ Phishing</span>
+          ) : (
+            <span className="url-badge url-badge-unknown">Unknown</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function VerdictCard({ verdict }) {
   if (!verdict) return null
 
@@ -71,7 +139,11 @@ export default function VerdictCard({ verdict }) {
     report,
     extracted_text,
     extracted_sender,
+    case_id,
+    artifacts,
   } = verdict
+
+  const urlReputation = artifacts?.url_reputation || []
 
   // ImageVerdict includes extracted_text; a text-path Verdict never does.
   const fromImage = typeof extracted_text === 'string'
@@ -139,10 +211,11 @@ export default function VerdictCard({ verdict }) {
           </div>
         )}
 
-        {!isSafe && signals && signals.length > 0 && (
+        {!isSafe && ((signals && signals.length > 0) || urlReputation.some((u) => u.status !== 'clean')) && (
           <div className="verdict-section">
             <h3 className="section-label">{L.signals}</h3>
             <SignalChips signals={signals} />
+            <UrlReputationList urlReputation={urlReputation} />
           </div>
         )}
 
@@ -182,6 +255,8 @@ export default function VerdictCard({ verdict }) {
             <ReportSection report={report} fromImage={fromImage} signals={signals} risk={risk} labels={L} />
           </div>
         )}
+
+        <CaseIdFooter caseId={case_id} />
       </div>
     </article>
   )

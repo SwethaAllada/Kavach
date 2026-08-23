@@ -19,6 +19,7 @@ class Verdict(BaseModel):
     recommended_action: str
     report: dict
     detected_language: str
+    case_id: str
 
 
 class ImageVerdict(Verdict):

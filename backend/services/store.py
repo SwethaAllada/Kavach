@@ -29,6 +29,34 @@ it trusts the whitelist upstream.
 # -- bypasses RLS. The anon key must NEVER be given to this backend.
 # alter table public.signals enable row level security;
 # ------------------------------------------------------------
+#
+# `audit_log` is a SEPARATE table with a DELIBERATELY WIDER field contract
+# than `signals` above — it exists for legal admissibility (law enforcement
+# / the user proving a specific message was analyzed), not anonymized
+# telemetry, so it is keyed by case_id and carries a few more derived fields.
+# It still never stores raw message text: `input_hash` is a one-way
+# SHA-256 of the input, and `matched_pattern_ids` is a comma-separated list
+# of KB entry IDs (e.g. "DA-01,DA-03"), not the matched text itself.
+#
+# ------------------------------------------------------------
+# Supabase DDL — paste this into the Supabase SQL editor (also in
+# deploy/supabase_audit.sql):
+# ------------------------------------------------------------
+# create table if not exists public.audit_log (
+#     case_id             text primary key,
+#     scam_type           text,
+#     risk_bucket         text,
+#     confidence_bucket   text,   -- 'high' (>0.8), 'medium' (0.5-0.8), 'low' (<0.5)
+#     decision_source     text,
+#     detected_language   text,
+#     matched_pattern_ids text,   -- comma-separated KB entry IDs, e.g. "DA-01,DA-03"
+#     fallback_used       boolean,
+#     input_hash          text,   -- SHA-256 hex digest of the input text, NOT the text
+#     created_at          timestamptz not null default now()
+# );
+# create index if not exists audit_log_created_at_idx on public.audit_log (created_at desc);
+# alter table public.audit_log enable row level security;
+# ------------------------------------------------------------
 """
 
 from __future__ import annotations
@@ -46,9 +74,11 @@ from core.config import settings
 log = logging.getLogger(__name__)
 
 _TABLE = "signals"
+_AUDIT_TABLE = "audit_log"
 _INSERT_TIMEOUT_S = 4.0     # tight — telemetry is fire-and-forget
 _READ_TIMEOUT_S = 8.0       # trends endpoint is user-visible; give it a bit more
 _TRENDS_ROW_LIMIT = 10_000  # cap the trends read — we only need coarse counts
+_CASE_LOOKUP_TIMEOUT_S = 8.0  # /case/{case_id} is user/law-enforcement-visible
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +92,11 @@ def _is_configured() -> bool:
 def _rest_url() -> str:
     base = settings.supabase_url.rstrip("/")
     return f"{base}/rest/v1/{_TABLE}"
+
+
+def _audit_rest_url() -> str:
+    base = settings.supabase_url.rstrip("/")
+    return f"{base}/rest/v1/{_AUDIT_TABLE}"
 
 
 def _headers(*, prefer_return_minimal: bool = True) -> dict:
@@ -241,3 +276,96 @@ def get_trends() -> dict:
     except Exception as e:  # defensive
         log.warning("get_trends unexpected failure: %s", e)
         return _empty_trends(status="unavailable")
+
+
+# ---------------------------------------------------------------------------
+# Audit log — legal-admissibility trail, separate table from `signals`
+# ---------------------------------------------------------------------------
+
+def _do_audit_insert(record: dict) -> None:
+    """Perform the actual HTTP POST to audit_log. Runs in a worker thread."""
+    try:
+        with httpx.Client(timeout=_INSERT_TIMEOUT_S) as client:
+            resp = client.post(_audit_rest_url(), headers=_headers(), json=record)
+            if resp.status_code >= 300:
+                log.warning(
+                    "audit_log insert failed: HTTP %s (%s)",
+                    resp.status_code,
+                    resp.reason_phrase,
+                )
+    except Exception as e:
+        # NEVER let the audit write escape into the request path.
+        log.warning("audit_log insert error: %s", e)
+
+
+def log_audit_record(record: dict) -> None:
+    """Insert a case audit `record` into the `audit_log` table.
+
+    Same fire-and-forget discipline as log_signal(): dispatched to a
+    background daemon thread, every failure mode swallowed and logged. The
+    caller's Verdict is unaffected whether or not this write succeeds.
+
+    Callers pass the already-assembled audit dict (case_id, scam_type,
+    risk_bucket, confidence_bucket, decision_source, detected_language,
+    matched_pattern_ids, fallback_used, input_hash) — this module does not
+    validate or reshape it beyond checking it's a non-empty dict.
+    """
+    if not _is_configured():
+        return
+    if not isinstance(record, dict) or not record:
+        return
+    try:
+        t = threading.Thread(
+            target=_do_audit_insert,
+            args=(record,),
+            name="kavach-audit-write",
+            daemon=True,
+        )
+        t.start()
+    except Exception as e:
+        log.warning("failed to dispatch audit_log insert: %s", e)
+
+
+class AuditStoreUnavailable(Exception):
+    """Raised by get_audit_record() when Supabase is unconfigured, unreachable,
+    or errors — distinct from a clean "0 rows" result, so routes/analyze.py
+    can return 503 instead of misreporting a store outage as 404."""
+
+
+def get_audit_record(case_id: str) -> dict | None:
+    """Fetch the audit_log row for `case_id`. Synchronous — this backs the
+    user/law-enforcement-facing GET /case/{case_id} endpoint, so unlike
+    log_audit_record() it does need to report its outcome to the caller.
+
+    Returns the row dict, or None if genuinely not found (0 rows).
+    Raises AuditStoreUnavailable if Supabase is unconfigured/unreachable/
+    erroring — callers should map that to 503, not 404.
+    """
+    if not _is_configured():
+        raise AuditStoreUnavailable("Supabase is not configured")
+    try:
+        with httpx.Client(timeout=_CASE_LOOKUP_TIMEOUT_S) as client:
+            resp = client.get(
+                _audit_rest_url(),
+                headers=_headers(prefer_return_minimal=False),
+                params={"case_id": f"eq.{case_id}", "select": "*", "limit": "1"},
+            )
+            if resp.status_code >= 300:
+                log.warning(
+                    "audit_log read failed: HTTP %s (%s)",
+                    resp.status_code,
+                    resp.reason_phrase,
+                )
+                raise AuditStoreUnavailable(f"HTTP {resp.status_code}")
+            data = resp.json()
+            if not isinstance(data, list):
+                log.warning("audit_log read: unexpected response shape (not a list)")
+                raise AuditStoreUnavailable("unexpected response shape")
+            if not data:
+                return None
+            return data[0]
+    except AuditStoreUnavailable:
+        raise
+    except Exception as e:
+        log.warning("audit_log read error: %s", e)
+        raise AuditStoreUnavailable(str(e)) from e

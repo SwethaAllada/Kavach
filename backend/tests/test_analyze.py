@@ -15,6 +15,13 @@ from services.rules import SCAM_TAXONOMY, SIGNALS
 
 client = TestClient(app)
 
+# "phishing_url" is deliberately NOT part of services.rules.SIGNALS (see
+# classifier._apply_url_reputation's docstring) — SIGNALS is interpolated
+# into llm.py's prompt/output-allowlist, and this signal must only ever
+# come from a deterministic PhishTank hit, never LLM guesswork. Verdicts
+# validate against this superset instead.
+_ALL_KNOWN_SIGNALS = set(SIGNALS) | {"phishing_url"}
+
 
 VERDICT_FIELDS = [
     "scam_type",
@@ -29,6 +36,7 @@ VERDICT_FIELDS = [
     "recommended_action",
     "report",
     "detected_language",
+    "case_id",
 ]
 
 
@@ -41,10 +49,13 @@ def _assert_valid_verdict(body: dict) -> None:
     assert body["detected_language"] in ("en", "hi", "te")
     assert isinstance(body["signals"], list)
     for s in body["signals"]:
-        assert s in SIGNALS
+        assert s in _ALL_KNOWN_SIGNALS
     assert isinstance(body["artifacts"], dict)
     assert "urls" in body["artifacts"] and "phones" in body["artifacts"]
     assert "channels" in body["report"]
+    assert re.fullmatch(r"KAV-\d{8}-[A-Z0-9]{4}", body["case_id"]), (
+        f"case_id does not match KAV-YYYYMMDD-XXXX: {body['case_id']!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -687,3 +698,294 @@ def test_get_trends_route_returns_valid_shape_when_store_down(monkeypatch):
     assert body["total_count"] == 0
     assert "by_scam_type" in body
     assert "last_7_days" in body
+
+
+# ---------------------------------------------------------------------------
+# Case ID + audit trail (legal admissibility)
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_returns_case_id_matching_format():
+    r = client.post("/analyze", json={"text": "hello"})
+    assert r.status_code == 200
+    body = r.json()
+    assert re.fullmatch(r"KAV-\d{8}-[A-Z0-9]{4}", body["case_id"])
+
+
+def test_two_consecutive_analyze_calls_return_different_case_ids():
+    r1 = client.post("/analyze", json={"text": "hello"})
+    r2 = client.post("/analyze", json={"text": "hello"})
+    assert r1.json()["case_id"] != r2.json()["case_id"]
+
+
+def test_input_hash_is_valid_sha256_hex(monkeypatch):
+    """input_hash written to the audit record is a 64-char hex SHA-256 digest,
+    matching hashlib.sha256(text.encode()).hexdigest()."""
+    import hashlib
+    from services import classifier as cm
+
+    captured = []
+    monkeypatch.setattr(cm.store_service, "log_audit_record", lambda r: captured.append(r))
+
+    text = "This is CBI. Transfer for verification."
+    cm.analyze(text)
+
+    assert len(captured) == 1
+    input_hash = captured[0]["input_hash"]
+    assert isinstance(input_hash, str)
+    assert len(input_hash) == 64
+    assert re.fullmatch(r"[0-9a-f]{64}", input_hash)
+    assert input_hash == hashlib.sha256(text.encode()).hexdigest()
+
+
+def test_audit_log_write_failure_does_not_affect_verdict(monkeypatch):
+    """Load-bearing: /analyze must be unaffected by audit-log write failures,
+    same fire-and-forget discipline as telemetry."""
+    from services import classifier as cm
+
+    def _fake_llm(text: str, grounding: str = "") -> dict:
+        return {
+            "scam_type": "digital_arrest",
+            "risk": 92,
+            "confidence": 0.9,
+            "signals": ["authority", "payment"],
+            "explanation": "Classic digital arrest pattern.",
+            "recommended_action": "Report to 1930.",
+            "detected_language": "en",
+        }
+
+    def _boom(_record):
+        raise RuntimeError("audit store is on fire")
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm)
+    monkeypatch.setattr(cm.store_service, "log_audit_record", _boom)
+
+    text = "This is CBI. Transfer for verification."
+    verdict = cm.analyze(text)
+    _assert_valid_verdict(verdict)
+    assert verdict["scam_type"] == "digital_arrest"
+
+
+def test_audit_record_has_expected_shape(monkeypatch):
+    from services import classifier as cm
+
+    captured = []
+    monkeypatch.setattr(cm.store_service, "log_audit_record", lambda r: captured.append(r))
+
+    cm.analyze("This is CBI. Transfer for verification.")
+
+    assert len(captured) == 1
+    record = captured[0]
+    for field in (
+        "case_id", "scam_type", "risk_bucket", "confidence_bucket",
+        "decision_source", "detected_language", "matched_pattern_ids",
+        "fallback_used", "input_hash",
+    ):
+        assert field in record, f"audit record missing field: {field}"
+    assert record["confidence_bucket"] in ("high", "medium", "low")
+
+
+def test_confidence_bucket_boundaries():
+    from services.classifier import _confidence_bucket
+    assert _confidence_bucket(0.95) == "high"
+    assert _confidence_bucket(0.81) == "high"
+    assert _confidence_bucket(0.80) == "medium"
+    assert _confidence_bucket(0.5) == "medium"
+    assert _confidence_bucket(0.49) == "low"
+    assert _confidence_bucket(0.0) == "low"
+    assert _confidence_bucket(None) == "low"
+
+
+def test_get_case_returns_audit_record_when_found(monkeypatch):
+    """GET /case/{case_id} returns the audit_log row from a mocked Supabase."""
+    from services import store as store_module
+
+    fake_row = {
+        "case_id": "KAV-20260824-A7K2",
+        "scam_type": "digital_arrest",
+        "risk_bucket": "high",
+        "confidence_bucket": "high",
+        "decision_source": "rules+llm",
+        "detected_language": "en",
+        "matched_pattern_ids": "DA-01,DA-03",
+        "fallback_used": False,
+        "input_hash": "a" * 64,
+        "created_at": "2026-08-24T00:07:00+00:00",
+    }
+    monkeypatch.setattr(store_module, "get_audit_record", lambda case_id: fake_row)
+
+    r = client.get("/case/KAV-20260824-A7K2")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["case_id"] == "KAV-20260824-A7K2"
+    assert body["matched_pattern_ids"] == "DA-01,DA-03"
+
+
+def test_get_case_returns_404_when_not_found(monkeypatch):
+    from services import store as store_module
+
+    monkeypatch.setattr(store_module, "get_audit_record", lambda case_id: None)
+
+    r = client.get("/case/KAV-20260824-ZZZZ")
+    assert r.status_code == 404
+    assert r.json() == {"error": "Case not found"}
+
+
+def test_get_case_returns_503_when_supabase_unavailable(monkeypatch):
+    from services import store as store_module
+
+    def _boom(case_id):
+        raise store_module.AuditStoreUnavailable("Supabase is not configured")
+
+    monkeypatch.setattr(store_module, "get_audit_record", _boom)
+
+    r = client.get("/case/KAV-20260824-A7K2")
+    assert r.status_code == 503
+    assert r.json() == {"error": "Audit log unavailable"}
+
+
+# ---------------------------------------------------------------------------
+# URL reputation — second deterministic signal source (PhishTank)
+# ---------------------------------------------------------------------------
+
+
+def _fake_llm_kyc(text: str, grounding: str = "") -> dict:
+    return {
+        "scam_type": "kyc_bank",
+        "risk": 70,
+        "confidence": 0.8,
+        "signals": ["urgency"],
+        "explanation": "KYC scam pattern.",
+        "recommended_action": "Do not click the link.",
+        "detected_language": "en",
+    }
+
+
+def test_decision_source_includes_url_rep_when_urls_present(monkeypatch):
+    from services import classifier as cm
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm_kyc)
+    monkeypatch.setattr(cm.reputation_service, "get_url_signals", lambda text: [
+        {"url": "http://safe.example.com", "status": "clean", "source": "PhishTank"}
+    ])
+
+    verdict = cm.analyze("Update your KYC at http://safe.example.com now")
+    assert verdict["decision_source"].endswith("+url_rep")
+
+
+def test_decision_source_has_no_url_rep_suffix_when_no_urls(monkeypatch):
+    from services import classifier as cm
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm_kyc)
+    monkeypatch.setattr(cm.reputation_service, "get_url_signals", lambda text: [])
+
+    verdict = cm.analyze("Update your KYC immediately or your account will be blocked")
+    assert "+url_rep" not in verdict["decision_source"]
+
+
+def test_phishing_url_added_to_signals_and_risk_bumped(monkeypatch):
+    from services import classifier as cm
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm_kyc)
+    monkeypatch.setattr(cm.reputation_service, "get_url_signals", lambda text: [
+        {"url": "http://phish.example.com/login", "status": "phishing", "source": "PhishTank"}
+    ])
+
+    # Baseline: same inputs, no URL signals, to compute the expected bump.
+    monkeypatch.setattr(cm.store_service, "log_signal", lambda r: None)
+    monkeypatch.setattr(cm.store_service, "log_audit_record", lambda r: None)
+    text = "Update your KYC at http://phish.example.com/login now"
+
+    with_url_rep = cm.analyze(text)
+    assert "phishing_url" in with_url_rep["signals"]
+    assert with_url_rep["artifacts"]["url_reputation"] == [
+        {"url": "http://phish.example.com/login", "status": "phishing", "source": "PhishTank"}
+    ]
+
+    monkeypatch.setattr(cm.reputation_service, "get_url_signals", lambda text: [])
+    without_url_rep = cm.analyze(text)
+    assert "phishing_url" not in without_url_rep["signals"]
+
+    # Risk bump is capped at +8 and never pushes above 100.
+    assert with_url_rep["risk"] - without_url_rep["risk"] == 8
+
+
+def test_risk_bump_is_capped_at_100(monkeypatch):
+    from services import classifier as cm
+
+    def _fake_llm_high_risk(text: str, grounding: str = "") -> dict:
+        return {
+            "scam_type": "digital_arrest", "risk": 98, "confidence": 0.95,
+            "signals": ["authority", "fear", "payment"],
+            "explanation": "x", "recommended_action": "y", "detected_language": "en",
+        }
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm_high_risk)
+    monkeypatch.setattr(cm.reputation_service, "get_url_signals", lambda text: [
+        {"url": "http://phish.example.com/login", "status": "phishing", "source": "PhishTank"}
+    ])
+
+    verdict = cm.analyze("CBI digital arrest, transfer now via http://phish.example.com/login")
+    assert verdict["risk"] <= 100
+
+
+def test_artifacts_urls_untouched_alongside_url_reputation(monkeypatch):
+    """artifacts.urls stays the existing list[str] of raw URLs; the new
+    reputation dicts live in a separate artifacts.url_reputation key."""
+    from services import classifier as cm
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm_kyc)
+    monkeypatch.setattr(cm.reputation_service, "get_url_signals", lambda text: [
+        {"url": "http://phish.example.com/login", "status": "phishing", "source": "PhishTank"}
+    ])
+
+    text = "Update your KYC at http://phish.example.com/login now"
+    verdict = cm.analyze(text)
+    assert verdict["artifacts"]["urls"] == ["http://phish.example.com/login"]
+    assert isinstance(verdict["artifacts"]["url_reputation"], list)
+    assert all(isinstance(s, dict) for s in verdict["artifacts"]["url_reputation"])
+
+
+def test_phishtank_download_failure_does_not_affect_verdict(monkeypatch):
+    """Load-bearing: /analyze must be unaffected by a PhishTank outage —
+    same fire-and-forget-style resilience as telemetry/audit."""
+    from services import classifier as cm
+    from services import reputation as reputation_module
+
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm_kyc)
+
+    def _boom(text):
+        raise RuntimeError("PhishTank is down")
+
+    monkeypatch.setattr(cm.reputation_service, "get_url_signals", _boom)
+
+    text = "Update your KYC at http://example.com now"
+    verdict = cm.analyze(text)
+    _assert_valid_verdict(verdict)
+    assert verdict["scam_type"] == "kyc_bank"
+    # Augmentation failed cleanly: no +url_rep suffix, empty reputation list.
+    assert "+url_rep" not in verdict["decision_source"]
+    assert verdict["artifacts"]["url_reputation"] == []
+
+
+def test_get_url_signals_real_network_failure_path_via_classifier(monkeypatch):
+    """Same as above but exercising the real reputation module (not a mock
+    of get_url_signals itself) against a mocked network failure, so the
+    classifier-level integration of reputation.py's own error handling is
+    covered too."""
+    from services import classifier as cm
+    from services import reputation as reputation_module
+
+    def _raise_network_error(*args, **kwargs):
+        raise RuntimeError("network is down")
+
+    reputation_module._reset_cache_for_tests()
+    monkeypatch.setattr(cm.llm_service, "analyze_message", _fake_llm_kyc)
+    monkeypatch.setattr("httpx.Client", _raise_network_error)
+
+    text = "Update your KYC at http://example.com now"
+    verdict = cm.analyze(text)
+    _assert_valid_verdict(verdict)
+    # PhishTank being unreachable -> "unknown", never "phishing" -> no bump.
+    assert "phishing_url" not in verdict["signals"]
+    reputation_module._reset_cache_for_tests()

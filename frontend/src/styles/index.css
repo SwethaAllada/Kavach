@@ -589,6 +589,29 @@ button.lang-pill.is-selected:hover { background: #164a8a; }
   color: var(--ink);
 }
 
+/* Case ID footer — legal admissibility trail, small + muted */
+.case-id-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+}
+.case-id-copy-btn {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.case-id-copy-btn:hover { color: var(--ink); border-color: var(--muted); }
+
 /* Signal chips */
 .signal-chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
 .signal-chip {
@@ -605,6 +628,42 @@ button.lang-pill.is-selected:hover { background: #164a8a; }
 .signal-chip.tone-danger .dot { background: var(--danger); }
 .signal-chip.tone-warn   { background: var(--warn-bg); color: var(--warn); }
 .signal-chip.tone-warn .dot { background: var(--warn); }
+
+/* URL reputation (PhishTank) */
+.url-reputation-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.url-reputation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: var(--text-sm);
+}
+.url-reputation-url {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.url-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.url-badge-phishing { background: var(--danger-bg); color: var(--danger); }
+.url-badge-unknown  { background: var(--page); color: var(--muted); }
 
 /* Matched patterns */
 .patterns-details summary {
