@@ -90,3 +90,30 @@ dataset before using it to gate a release.
 Append more `.jsonl` lines to `v1.jsonl`, or add a new `v2.jsonl` etc. and
 pass `--dataset eval/datasets/v2.jsonl`. Keep every field populated — `run.py`
 skips (with a warning) any row missing a required field.
+
+## Changelog
+
+- 2026-08-24: Added 18 real-world noise rows (rw_*) simulating actual
+  forwarded WhatsApp messages — abbreviations, code-mixing, DLT headers,
+  OCR artifacts. These test robustness on realistic input, not just clean
+  text.
+  - Row `id`s use the `rw_*` prefix (not `v2-*`) so they're easy to filter.
+  - The task's original field set (`id`/`text`/`lang`/`label`/`category`)
+    was translated into the real 11-field v2 schema so `eval/run.py`
+    actually scores these rows instead of silently skipping them (see
+    "Schema" above) — `category` values were mapped to the closest
+    existing v2 category (e.g. a courier/customs scam → `phishing_link`,
+    which `taxonomy_map.py` already resolves to `courier_parcel` via a
+    keyword match) rather than inventing new category names outside the
+    fixed vocabulary.
+  - 8 additional realistic scenarios beyond the original 18 were added in
+    the same batch (`rw_scam_10`–`rw_scam_14`, `rw_leg_09`–`rw_leg_10`,
+    `rw_unc_02`): a fake-medical-emergency money request, a WhatsApp-account
+    phishing message, an income-tax "arrest warrant" call-back scam, a
+    prepaid-fee work-from-home job scam, a UPI QR "scan to receive
+    cashback" scam (a distinct mechanism from the existing UPI
+    collect-request rows — this one baits a PIN entry via a fake incoming
+    payment), a legitimate IRCTC PNR confirmation, a legitimate
+    forwarded office-holiday notice (hard negative — informal tone,
+    forwarded, but genuinely benign), and a genuine public scam-awareness
+    forward (unclear — warns about scams rather than being one).
