@@ -802,7 +802,7 @@ def test_webhook_unsupported_media_type_returns_error():
 def test_webhook_image_download_failure_returns_fallback(monkeypatch):
     """Failed image download returns helpful fallback message."""
     async def _mock_download_fail(url):
-        return None
+        return None, "Download failed"
 
     monkeypatch.setattr(webhook_module, "_download_twilio_media", _mock_download_fail)
 
@@ -825,7 +825,7 @@ def test_webhook_image_download_failure_returns_fallback(monkeypatch):
 def test_webhook_vision_extraction_failure_returns_fallback(monkeypatch):
     """Failed vision extraction returns helpful fallback message."""
     async def _mock_download_ok(url):
-        return b"fake image bytes"
+        return b"fake image bytes", None
 
     def _mock_extract_fail(image_bytes, content_type):
         return None
@@ -852,7 +852,7 @@ def test_webhook_vision_extraction_failure_returns_fallback(monkeypatch):
 def test_webhook_image_with_scam_text_returns_verdict(monkeypatch):
     """Image with scam text extracted is analyzed and returns verdict."""
     async def _mock_download_ok(url):
-        return b"fake image bytes"
+        return b"fake image bytes", None
 
     def _mock_extract_scam(image_bytes, content_type):
         return "This is CBI. Your Aadhaar is linked to illegal parcel. Transfer Rs 2 lakh now."

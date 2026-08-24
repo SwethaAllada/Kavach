@@ -77,8 +77,8 @@ class Settings:
         # --- Vision (screenshot text extraction, services/vision.py) ------------
         # A separate, explicitly-named model so a vision-capable model is never
         # silently swapped for the text model (or vice versa) by editing one
-        # shared setting.
-        self.vision_model: str = os.getenv("KAVACH_VISION_MODEL", "grok-2-vision-latest")
+        # shared setting. grok-4.6 supports image input natively.
+        self.vision_model: str = os.getenv("KAVACH_VISION_MODEL", "grok-4.6")
 
         # --- Translation (locales_loader.py) -------------------------------------
         # Runtime translation via deep-translator for languages with no

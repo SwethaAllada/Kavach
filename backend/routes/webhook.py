@@ -458,34 +458,55 @@ _IMAGE_UNSUPPORTED_TEXT = (
 )
 
 
-async def _download_twilio_media(media_url: str) -> bytes | None:
+async def _download_twilio_media(media_url: str) -> tuple[bytes | None, str | None]:
     """Download media from Twilio's URL with Basic Auth.
 
     Twilio media URLs require authentication using Account SID and Auth Token.
-    Returns the image bytes, or None on any failure.
+    Returns (image_bytes, error_message) tuple.
     """
     if not media_url:
-        return None
+        return None, "No media URL provided"
+
+    # Check if credentials are configured
+    if not settings.twilio_account_sid or not settings.twilio_auth_token:
+        log.error("webhook: Twilio credentials not configured for media download")
+        return None, "Media download not configured"
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             # Twilio requires Basic Auth for media downloads
-            auth = None
-            if settings.twilio_account_sid and settings.twilio_auth_token:
-                auth = (settings.twilio_account_sid, settings.twilio_auth_token)
+            auth = (settings.twilio_account_sid, settings.twilio_auth_token)
 
+            log.info("webhook: downloading media from Twilio: %s", media_url[:100])
             response = await client.get(media_url, auth=auth, follow_redirects=True)
+
+            if response.status_code == 401:
+                log.error("webhook: Twilio auth failed (401) - check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN")
+                return None, "Authentication failed"
+
+            if response.status_code == 404:
+                log.error("webhook: Media not found (404) - URL may have expired")
+                return None, "Media not found"
+
             response.raise_for_status()
 
             # Check size
             if len(response.content) > _MAX_IMAGE_BYTES:
                 log.warning("webhook: media too large: %d bytes", len(response.content))
-                return None
+                return None, "Image too large"
 
-            return response.content
+            log.info("webhook: downloaded %d bytes from Twilio", len(response.content))
+            return response.content, None
+
+    except httpx.TimeoutException as e:
+        log.warning("webhook: timeout downloading media: %s", e)
+        return None, "Download timed out"
+    except httpx.HTTPStatusError as e:
+        log.warning("webhook: HTTP error downloading media: %s", e)
+        return None, f"HTTP error: {e.response.status_code}"
     except Exception as e:
-        log.warning("webhook: failed to download media from %s: %s", media_url, e)
-        return None
+        log.exception("webhook: failed to download media from %s: %s", media_url, e)
+        return None, str(e)
 
 
 def _extract_text_from_whatsapp_image(image_bytes: bytes, content_type: str) -> str | None:
@@ -549,7 +570,7 @@ async def webhook(request: Request) -> Response:
 
     # Handle image messages (screenshots)
     if num_media > 0 and media_url:
-        log.info("webhook: received media message, type=%s", media_type)
+        log.info("webhook: received media message, type=%s, url=%s", media_type, media_url[:80])
 
         # Check if it's a supported image type
         if media_type not in _ALLOWED_IMAGE_TYPES:
@@ -557,16 +578,19 @@ async def webhook(request: Request) -> Response:
             return _twiml(_IMAGE_UNSUPPORTED_TEXT)
 
         # Download the image from Twilio
-        image_bytes = await _download_twilio_media(media_url)
+        image_bytes, download_error = await _download_twilio_media(media_url)
         if image_bytes is None:
+            log.error("webhook: image download failed: %s", download_error)
+            if download_error == "Image too large":
+                return _twiml(_IMAGE_TOO_LARGE_TEXT)
             return _twiml(_IMAGE_FALLBACK_TEXT)
 
-        if len(image_bytes) > _MAX_IMAGE_BYTES:
-            return _twiml(_IMAGE_TOO_LARGE_TEXT)
+        log.info("webhook: downloaded image, %d bytes", len(image_bytes))
 
         # Extract text from the image using vision
         extracted_text = _extract_text_from_whatsapp_image(image_bytes, media_type)
         if not extracted_text:
+            log.error("webhook: vision extraction returned no text")
             return _twiml(_IMAGE_FALLBACK_TEXT)
 
         # Use the extracted text for analysis (combine with any caption)
