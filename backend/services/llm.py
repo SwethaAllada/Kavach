@@ -267,3 +267,100 @@ def analyze_message(text: str, grounding: str = "") -> dict:
                 time.sleep(0.5 * (2**attempt))
 
     raise LLMUnavailable(f"LLM unavailable after retries: {last_err}")
+
+
+# ---------------------------------------------------------------------------
+# Conversational intelligence: answer general questions about Kavach
+# ---------------------------------------------------------------------------
+
+_CONVERSATIONAL_SYSTEM_PROMPT = """You are Kavach, an AI fraud-detection assistant for Indian citizens accessible via WhatsApp. You help people check if messages are scams and guide them to report fraud. You support 20 Indian languages.
+
+Answer the user's question helpfully and concisely in the SAME LANGUAGE they asked in. Keep replies under 300 characters for WhatsApp readability.
+
+If asked what you can do, explain briefly:
+- Check if a message is a scam (they should forward it)
+- Guide reporting to 1930 and Chakshu
+- Support 20 Indian languages
+- Available 24/7, free
+
+If asked about a specific scam type, explain it briefly.
+If asked how to report, give the 1930 number.
+If asked who made you, say 'Kavach — built to protect Indian citizens from fraud. Try forwarding a suspicious message to check it.'
+If the question is not related to fraud/scams/safety, gently redirect: 'I am best at checking if messages are scams. Forward me any suspicious message and I will analyze it instantly.'
+
+Always end conversational replies with one of:
+- 'Forward me any suspicious message to check it.' (if question was about capability)
+- 'Call 1930 if you need immediate help.' (if question was about reporting/emergency)
+- Nothing (if the answer is self-contained)
+
+NEVER pretend to be human. NEVER make up statistics. Keep it warm but brief."""
+
+_CONVERSATIONAL_FALLBACK = (
+    "I help check if messages are scams. Forward me any suspicious message "
+    "and I will tell you if it is safe. Call 1930 for emergencies."
+)
+
+
+def answer_general_query(text: str) -> str:
+    """Answer a general question about Kavach or fraud safety conversationally.
+
+    Uses the same xAI Grok model as the main LLM, but with a conversational
+    system prompt instead of the scam-classification prompt.
+
+    Returns a short, helpful reply in the same language the user asked in.
+    On any failure, returns a safe fallback string (never raises).
+    """
+    if not settings.xai_api_key:
+        log.warning("answer_general_query: XAI_API_KEY not configured")
+        return _CONVERSATIONAL_FALLBACK
+
+    try:
+        client = OpenAI(
+            api_key=settings.xai_api_key,
+            base_url=settings.base_url,
+            timeout=settings.llm_timeout_s,
+        )
+    except Exception as e:
+        log.warning("answer_general_query: failed to init client: %s", e)
+        return _CONVERSATIONAL_FALLBACK
+
+    last_err: Exception | None = None
+
+    for attempt in range(settings.max_retries + 1):
+        try:
+            resp = client.chat.completions.create(
+                model=settings.model,
+                messages=[
+                    {"role": "system", "content": _CONVERSATIONAL_SYSTEM_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                temperature=0.7,  # Slightly more creative for conversation
+                max_tokens=200,   # Short replies for WhatsApp
+            )
+            content = _extract_content(resp)
+            if content:
+                # Ensure reply doesn't exceed WhatsApp-friendly length
+                return content.strip()[:500]
+            raise ValueError("empty LLM response")
+
+        except (
+            APITimeoutError,
+            APIConnectionError,
+            RateLimitError,
+            APIError,
+            APIStatusError,
+            httpx.HTTPError,
+            ValueError,
+        ) as e:
+            last_err = e
+            log.warning("answer_general_query attempt %d failed: %s", attempt + 1, e)
+            if attempt < settings.max_retries:
+                time.sleep(0.5 * (2**attempt))
+        except Exception as e:
+            last_err = e
+            log.warning("answer_general_query attempt %d failed (unexpected): %s", attempt + 1, e)
+            if attempt < settings.max_retries:
+                time.sleep(0.5 * (2**attempt))
+
+    log.warning("answer_general_query: all retries failed: %s", last_err)
+    return _CONVERSATIONAL_FALLBACK

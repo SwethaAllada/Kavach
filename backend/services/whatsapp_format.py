@@ -242,12 +242,13 @@ _ALTERNATIVE_EN = (
 )
 
 _HELP_MENU_EN = (
-    "Kavach — what can I help you with?\n\n"
-    "Reply:\n"
-    "1 — Report this scam to Chakshu\n"
-    "2 — I lost money — emergency steps\n"
-    "3 — Learn about this type of scam\n"
-    "ANALYZE — Check a new message"
+    "Kavach — I can help you with:\n\n"
+    "📨 Check a message — forward any suspicious SMS or WhatsApp text\n"
+    "1️⃣ Report to Chakshu\n"
+    "2️⃣ I lost money — emergency steps\n"
+    "3️⃣ Learn about a scam type\n"
+    "❓ Ask me anything about fraud safety\n\n"
+    "Just send me a message or question."
 )
 
 # Plain-language "how this scam works / what NOT to do" explanations, one per

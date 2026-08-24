@@ -455,8 +455,9 @@ def test_webhook_followup_3_returns_education_text():
 def test_webhook_followup_help_returns_help_menu():
     r = _post_webhook("HELP", headers=_followup_headers("8"))
     text = _twiml_text(r)
-    assert "ANALYZE" in text
+    # Updated HELP menu no longer has "ANALYZE" keyword, but has new features
     assert "Chakshu" in text
+    assert "Ask me anything" in text or "fraud safety" in text
 
 
 def test_webhook_followup_yes_returns_confirmation():
@@ -480,7 +481,9 @@ def test_webhook_followup_no_returns_alternative():
 def test_webhook_followup_case_insensitive_and_stripped():
     r = _post_webhook("  help  ", headers=_followup_headers("12"))
     text = _twiml_text(r)
-    assert "ANALYZE" in text
+    # Updated HELP menu no longer has "ANALYZE" keyword
+    assert "Kavach" in text
+    assert "Chakshu" in text or "Ask me anything" in text
 
 
 def test_webhook_long_message_not_intercepted_as_followup(monkeypatch):
@@ -505,3 +508,372 @@ def test_webhook_keyword_with_extra_words_not_intercepted(monkeypatch):
     text = _twiml_text(r)
     assert "Chakshu" not in text
     assert "LIKELY SCAM" in text
+
+
+# ---------------------------------------------------------------------------
+# Conversational intelligence tests (is_general_question + answer_general_query)
+# ---------------------------------------------------------------------------
+
+from routes.webhook import is_general_question
+from services import llm as llm_module
+
+
+def test_is_general_question_what_can_you_do():
+    """'What can you do?' is a general question."""
+    assert is_general_question("What can you do?") is True
+
+
+def test_is_general_question_how_does_this_work():
+    """'How does this work?' is a general question."""
+    assert is_general_question("How does this work?") is True
+
+
+def test_is_general_question_hindi():
+    """Hindi question 'क्या तुम हिंदी जानते हो?' is a general question."""
+    assert is_general_question("क्या तुम हिंदी जानते हो?") is True
+
+
+def test_is_general_question_telugu():
+    """Telugu question 'ఏమి చేయగలవు?' is a general question."""
+    assert is_general_question("ఏమి చేయగలవు?") is True
+
+
+def test_is_general_question_tamil():
+    """Tamil question 'என்ன செய்ய முடியும்?' is a general question."""
+    assert is_general_question("என்ன செய்ய முடியும்?") is True
+
+
+def test_is_general_question_cbi_scam_not_general():
+    """'This is CBI, transfer 2 lakh' contains scam signals -> NOT general."""
+    assert is_general_question("This is CBI, transfer 2 lakh") is False
+
+
+def test_is_general_question_otp_not_general():
+    """'Your OTP is 483920' contains scam signals -> NOT general."""
+    assert is_general_question("Your OTP is 483920") is False
+
+
+def test_is_general_question_kyc_not_general():
+    """'HDFC Bank: KYC update required' contains scam signals -> NOT general."""
+    assert is_general_question("HDFC Bank: KYC update required") is False
+
+
+def test_is_general_question_long_message_not_general():
+    """Long messages (>120 chars) are NOT general questions."""
+    long_msg = "What can you do? " * 10  # Well over 120 chars
+    assert is_general_question(long_msg) is False
+
+
+def test_is_general_question_not_a_question():
+    """A statement without question markers is NOT a general question."""
+    assert is_general_question("I like this app") is False
+
+
+def test_is_general_question_empty():
+    """Empty string is NOT a general question."""
+    assert is_general_question("") is False
+
+
+def _conversational_headers(ip_suffix: str) -> dict:
+    """Unique IP for conversational tests to avoid rate limit conflicts."""
+    return {"X-Forwarded-For": f"10.88.0.{ip_suffix}"}
+
+
+def test_webhook_general_question_returns_conversational_reply(monkeypatch):
+    """POST /webhook with Body='What can you do?' returns conversational TwiML."""
+    # Mock the conversational LLM to return a fixed response
+    def _mock_answer(_text):
+        return "I can check if messages are scams. Forward me any suspicious message to check it."
+
+    monkeypatch.setattr(llm_module, "answer_general_query", _mock_answer)
+
+    r = _post_webhook("What can you do?", headers=_conversational_headers("1"))
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    # Should contain "scam" or "forward" (from the mocked response)
+    assert "scam" in text.lower() or "forward" in text.lower()
+    # Should have the Kavach signature
+    assert "Kavach" in text
+
+
+def test_webhook_general_question_does_not_call_analyze(monkeypatch):
+    """General questions should NOT call analyze()."""
+    analyze_called = []
+
+    def _mock_analyze(text):
+        analyze_called.append(text)
+        return _LLM_MOCKS["en_digital_arrest"]
+
+    def _mock_answer(_text):
+        return "I help check scams."
+
+    monkeypatch.setattr(classifier_module, "analyze", _mock_analyze)
+    monkeypatch.setattr(llm_module, "answer_general_query", _mock_answer)
+
+    r = _post_webhook("What can you do?", headers=_conversational_headers("2"))
+    assert r.status_code == 200
+    # analyze() should NOT have been called
+    assert len(analyze_called) == 0
+
+
+def test_webhook_scam_message_still_calls_analyze(monkeypatch):
+    """Scam messages should still go through analyze(), not conversational path."""
+    monkeypatch.setattr(classifier_module.llm_service, "analyze_message",
+                        _mock_llm_for("en_digital_arrest"))
+
+    r = _post_webhook(
+        "This is CBI. Your Aadhaar is linked to illegal parcel. Transfer now.",
+        headers=_conversational_headers("3"),
+    )
+    text = _twiml_text(r)
+    assert "LIKELY SCAM" in text
+    assert "Digital Arrest" in text
+
+
+def test_webhook_conversational_llm_failure_returns_fallback(monkeypatch):
+    """LLM failure in answer_general_query returns fallback, no exception."""
+    def _mock_answer_fail(_text):
+        raise RuntimeError("LLM on fire")
+
+    monkeypatch.setattr(llm_module, "answer_general_query", _mock_answer_fail)
+
+    r = _post_webhook("What can you do?", headers=_conversational_headers("4"))
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    # Should return some fallback text, not crash
+    assert len(text) > 0
+
+
+def test_webhook_help_menu_updated():
+    """HELP menu should mention asking questions about fraud safety."""
+    r = _post_webhook("HELP", headers=_conversational_headers("5"))
+    text = _twiml_text(r)
+    # New help menu should mention asking questions
+    assert "Ask me anything" in text or "fraud safety" in text or "question" in text.lower()
+
+
+def test_is_general_question_kannada():
+    """Kannada question 'ಏನು ಮಾಡಬಹುದು?' is a general question."""
+    assert is_general_question("ಏನು ಮಾಡಬಹುದು?") is True
+
+
+def test_is_general_question_malayalam():
+    """Malayalam question 'എന്താണ് ചെയ്യാൻ കഴിയുക?' is a general question."""
+    assert is_general_question("എന്താണ് ചെയ്യാൻ കഴിയുക?") is True
+
+
+def test_is_general_question_bengali():
+    """Bengali question 'কি করতে পারো?' is a general question."""
+    assert is_general_question("কি করতে পারো?") is True
+
+
+def test_is_general_question_marathi():
+    """Marathi question 'काय करू शकता?' is a general question."""
+    assert is_general_question("काय करू शकता?") is True
+
+
+def test_is_general_question_gujarati():
+    """Gujarati question 'શું કરી શકો છો?' is a general question."""
+    assert is_general_question("શું કરી શકો છો?") is True
+
+
+def test_is_general_question_punjabi():
+    """Punjabi question 'ਕੀ ਕਰ ਸਕਦੇ ਹੋ?' is a general question."""
+    assert is_general_question("ਕੀ ਕਰ ਸਕਦੇ ਹੋ?") is True
+
+
+def test_is_general_question_odia():
+    """Odia question 'କଣ କରିପାରିବ?' is a general question."""
+    assert is_general_question("କଣ କରିପାରିବ?") is True
+
+
+def test_is_general_question_urdu():
+    """Urdu question 'کیا کر سکتے ہو؟' is a general question."""
+    assert is_general_question("کیا کر سکتے ہو?") is True
+
+
+def test_is_general_question_assamese():
+    """Assamese question 'কি কৰিব পাৰা?' is a general question."""
+    assert is_general_question("কি কৰিব পাৰা?") is True
+
+
+# ---------------------------------------------------------------------------
+# Greeting detection tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_general_question_hello():
+    """'Hello' is a greeting -> conversational."""
+    assert is_general_question("Hello") is True
+
+
+def test_is_general_question_hi():
+    """'Hi' is a greeting -> conversational."""
+    assert is_general_question("Hi") is True
+
+
+def test_is_general_question_good_morning():
+    """'Good morning' is a greeting -> conversational."""
+    assert is_general_question("Good morning") is True
+
+
+def test_is_general_question_thanks():
+    """'Thanks' is a greeting -> conversational."""
+    assert is_general_question("Thanks") is True
+
+
+def test_is_general_question_thank_you():
+    """'Thank you' is a greeting -> conversational."""
+    assert is_general_question("Thank you") is True
+
+
+def test_is_general_question_ok():
+    """'Ok' is a simple response -> conversational."""
+    assert is_general_question("Ok") is True
+
+
+def test_is_general_question_namaste():
+    """'नमस्ते' (Hindi greeting) is conversational."""
+    assert is_general_question("नमस्ते") is True
+
+
+def test_is_general_question_dhanyavad():
+    """'धन्यवाद' (Hindi thanks) is conversational."""
+    assert is_general_question("धन्यवाद") is True
+
+
+def test_is_general_question_hi_there():
+    """'Hi there' starts with greeting -> conversational."""
+    assert is_general_question("Hi there") is True
+
+
+def test_is_general_question_hello_how_are_you():
+    """'Hello, how are you' starts with greeting -> conversational."""
+    assert is_general_question("Hello, how are you") is True
+
+
+def test_webhook_greeting_returns_conversational_reply(monkeypatch):
+    """POST /webhook with Body='Hello' returns conversational TwiML."""
+    def _mock_answer(_text):
+        return "Hello! I'm Kavach, your fraud detection assistant. Forward me any suspicious message to check it."
+
+    monkeypatch.setattr(llm_module, "answer_general_query", _mock_answer)
+
+    r = _post_webhook("Hello", headers=_conversational_headers("20"))
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    assert "Kavach" in text
+    # Should NOT contain scam verdict elements
+    assert "LIKELY SCAM" not in text
+    assert "risk" not in text.lower() or "forward" in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Image handling tests
+# ---------------------------------------------------------------------------
+
+from routes import webhook as webhook_module
+from services import vision as vision_module
+
+
+def _image_headers(ip_suffix: str) -> dict:
+    """Unique IP for image tests to avoid rate limit conflicts."""
+    return {"X-Forwarded-For": f"10.77.0.{ip_suffix}"}
+
+
+def test_webhook_unsupported_media_type_returns_error():
+    """Unsupported media type (e.g., video) returns helpful error."""
+    form = {
+        "MessageSid": "SM_test_image_001",
+        "From": "whatsapp:+919812345678",
+        "To": "whatsapp:+14155552671",
+        "WaId": "919812345678",
+        "Body": "",
+        "NumMedia": "1",
+        "MediaUrl0": "https://api.twilio.com/media/test.mp4",
+        "MediaContentType0": "video/mp4",
+    }
+    r = client.post("/webhook", data=form, headers=_image_headers("1"))
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    assert "screenshot" in text.lower() or "image" in text.lower()
+
+
+def test_webhook_image_download_failure_returns_fallback(monkeypatch):
+    """Failed image download returns helpful fallback message."""
+    async def _mock_download_fail(url):
+        return None
+
+    monkeypatch.setattr(webhook_module, "_download_twilio_media", _mock_download_fail)
+
+    form = {
+        "MessageSid": "SM_test_image_002",
+        "From": "whatsapp:+919812345678",
+        "To": "whatsapp:+14155552671",
+        "WaId": "919812345678",
+        "Body": "",
+        "NumMedia": "1",
+        "MediaUrl0": "https://api.twilio.com/media/test.jpg",
+        "MediaContentType0": "image/jpeg",
+    }
+    r = client.post("/webhook", data=form, headers=_image_headers("2"))
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    assert "couldn't process" in text.lower() or "screenshot" in text.lower()
+
+
+def test_webhook_vision_extraction_failure_returns_fallback(monkeypatch):
+    """Failed vision extraction returns helpful fallback message."""
+    async def _mock_download_ok(url):
+        return b"fake image bytes"
+
+    def _mock_extract_fail(image_bytes, content_type):
+        return None
+
+    monkeypatch.setattr(webhook_module, "_download_twilio_media", _mock_download_ok)
+    monkeypatch.setattr(webhook_module, "_extract_text_from_whatsapp_image", _mock_extract_fail)
+
+    form = {
+        "MessageSid": "SM_test_image_003",
+        "From": "whatsapp:+919812345678",
+        "To": "whatsapp:+14155552671",
+        "WaId": "919812345678",
+        "Body": "",
+        "NumMedia": "1",
+        "MediaUrl0": "https://api.twilio.com/media/test.jpg",
+        "MediaContentType0": "image/jpeg",
+    }
+    r = client.post("/webhook", data=form, headers=_image_headers("3"))
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    assert "couldn't process" in text.lower() or "screenshot" in text.lower()
+
+
+def test_webhook_image_with_scam_text_returns_verdict(monkeypatch):
+    """Image with scam text extracted is analyzed and returns verdict."""
+    async def _mock_download_ok(url):
+        return b"fake image bytes"
+
+    def _mock_extract_scam(image_bytes, content_type):
+        return "This is CBI. Your Aadhaar is linked to illegal parcel. Transfer Rs 2 lakh now."
+
+    monkeypatch.setattr(webhook_module, "_download_twilio_media", _mock_download_ok)
+    monkeypatch.setattr(webhook_module, "_extract_text_from_whatsapp_image", _mock_extract_scam)
+    monkeypatch.setattr(classifier_module.llm_service, "analyze_message",
+                        _mock_llm_for("en_digital_arrest"))
+
+    form = {
+        "MessageSid": "SM_test_image_004",
+        "From": "whatsapp:+919812345678",
+        "To": "whatsapp:+14155552671",
+        "WaId": "919812345678",
+        "Body": "",
+        "NumMedia": "1",
+        "MediaUrl0": "https://api.twilio.com/media/test.jpg",
+        "MediaContentType0": "image/jpeg",
+    }
+    r = client.post("/webhook", data=form, headers=_image_headers("4"))
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    assert "LIKELY SCAM" in text
+    assert "Digital Arrest" in text

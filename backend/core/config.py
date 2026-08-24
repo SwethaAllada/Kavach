@@ -40,6 +40,7 @@ class Settings:
         self.xai_api_key: str = os.getenv("XAI_API_KEY", "")
         self.supabase_url: str = os.getenv("SUPABASE_URL", "")
         self.supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
+        self.twilio_account_sid: str = os.getenv("TWILIO_ACCOUNT_SID", "")
         self.twilio_auth_token: str = os.getenv("TWILIO_AUTH_TOKEN", "")
 
         # --- CORS ---------------------------------------------------------------
