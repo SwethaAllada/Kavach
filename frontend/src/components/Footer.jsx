@@ -1,11 +1,14 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from '../lib/useTranslation'
 
 export default function Footer() {
+  const { t } = useTranslation()
+
   return (
     <footer className="site-footer">
       <div className="site-footer-inner">
         <div className="footer-row">
-          <span>Kavach — catch the scam before it catches you.</span>
+          <span>{t('footer_tagline')}</span>
           <div className="footer-links">
             <Link to="/about">About</Link>
             <span aria-hidden="true">·</span>
@@ -17,9 +20,10 @@ export default function Footer() {
           </div>
         </div>
         <div className="footer-row">
-          <span className="footer-muted">🔒 No messages stored. Privacy first.</span>
+          <span className="footer-muted">{t('footer_privacy')}</span>
           <span className="footer-muted">
-            Emergency: <a href="tel:1930">📞 1930</a> ·{' '}
+            {t('footer_emergency').split('📞')[0]}
+            <a href="tel:1930">📞 1930</a> ·{' '}
             <a href="https://cybercrime.gov.in" target="_blank" rel="noreferrer">cybercrime.gov.in</a>
           </span>
         </div>

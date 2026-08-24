@@ -1,8 +1,11 @@
 import { useState, useRef, useCallback } from 'react'
 import { analyze, analyzeImage, ApiError } from '../lib/api'
+import { useTranslation } from '../lib/useTranslation'
 
 // Realistic one-tap examples across scam_type and language. Kept close to the
 // eval dataset so judges get recognizable, well-tested demo inputs.
+// These example labels ("Digital Arrest (EN)" etc.) are demo-content, not
+// interface chrome — they are illustrative example names, not translated.
 const EXAMPLES = [
   {
     id: 'en_digital_arrest',
@@ -41,6 +44,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png']
 
 function TextTab({ loading, onAnalyze }) {
+  const { t } = useTranslation()
   const [text, setText] = useState('')
   const [error, setError] = useState(null)
 
@@ -72,7 +76,7 @@ function TextTab({ loading, onAnalyze }) {
         onChange={(e) => setText(e.target.value)}
         rows={6}
         disabled={loading}
-        placeholder="Paste a suspicious SMS or WhatsApp message here…"
+        placeholder={t('analyze_placeholder')}
         aria-label="Suspicious message"
       />
 
@@ -81,10 +85,10 @@ function TextTab({ loading, onAnalyze }) {
           {loading ? (
             <>
               <span className="spinner" aria-hidden="true" />
-              <span>Analyzing…</span>
+              <span>{t('analyze_loading')}</span>
             </>
           ) : (
-            <>Analyze</>
+            <>{t('analyze_button')}</>
           )}
         </button>
 
@@ -95,13 +99,13 @@ function TextTab({ loading, onAnalyze }) {
             onClick={() => { setText(''); setError(null) }}
             aria-label="Clear input"
           >
-            Clear
+            {t('analyze_clear')}
           </button>
         )}
       </div>
 
       <div className="example-strip" aria-label="Try an example">
-        <span className="label">Try an example:</span>
+        <span className="label">{t('hero_try_example')}</span>
         {EXAMPLES.map((ex) => (
           <button
             type="button"
@@ -117,7 +121,7 @@ function TextTab({ loading, onAnalyze }) {
 
       {error && (
         <div className="error-box" role="alert">
-          <strong>Something went wrong.</strong> {error}
+          <strong>{t('analyze_error')}</strong> {error}
         </div>
       )}
     </form>
@@ -125,6 +129,7 @@ function TextTab({ loading, onAnalyze }) {
 }
 
 function ImageTab({ loading, onAnalyze }) {
+  const { t } = useTranslation()
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [error, setError] = useState(null)
@@ -226,16 +231,16 @@ function ImageTab({ loading, onAnalyze }) {
           {loading ? (
             <>
               <span className="spinner" aria-hidden="true" />
-              <span>Analyzing…</span>
+              <span>{t('analyze_loading')}</span>
             </>
           ) : (
-            <>Analyze screenshot</>
+            <>{t('analyze_button')}</>
           )}
         </button>
 
         {file && !loading && (
           <button type="button" className="btn btn-secondary" onClick={clearImage}>
-            Clear
+            {t('analyze_clear')}
           </button>
         )}
       </div>
@@ -259,7 +264,7 @@ function ImageTab({ loading, onAnalyze }) {
 
       {error && (
         <div className="error-box" role="alert">
-          <strong>Something went wrong.</strong> {error}
+          <strong>{t('analyze_error')}</strong> {error}
         </div>
       )}
     </div>
@@ -267,6 +272,7 @@ function ImageTab({ loading, onAnalyze }) {
 }
 
 export default function AnalyzePanel({ onResult, onLoadingChange }) {
+  const { t } = useTranslation()
   const [mode, setMode] = useState('text') // 'text' | 'image'
   const [loading, setLoading] = useState(false)
   const abortRef = useRef(null)
@@ -307,7 +313,7 @@ export default function AnalyzePanel({ onResult, onLoadingChange }) {
           onClick={() => setMode('text')}
           disabled={loading}
         >
-          Paste text
+          {t('analyze_tab_text')}
         </button>
         <button
           type="button"
@@ -317,7 +323,7 @@ export default function AnalyzePanel({ onResult, onLoadingChange }) {
           onClick={() => setMode('image')}
           disabled={loading}
         >
-          Upload screenshot
+          {t('analyze_tab_screenshot')}
         </button>
       </div>
 

@@ -1,14 +1,17 @@
+import { useTranslation } from '../lib/useTranslation'
+
 /**
  * Small risk donut (72x72). For scam_type === 'likely_safe', callers should
  * render the ✓ check instead (see VerdictCard) — this component always
  * draws the numeric donut, used for every non-safe verdict.
  */
 export default function RiskMeter({ risk = 0, tone = 'safe' }) {
+  const { t } = useTranslation()
   const clamped = Math.max(0, Math.min(100, Math.round(risk)))
   const radius = 30
   const circumference = 2 * Math.PI * radius
   const offset = circumference * (1 - clamped / 100)
-  const word = tone === 'danger' ? 'HIGH' : tone === 'warn' ? 'MED' : 'LOW'
+  const word = tone === 'danger' ? t('verdict_risk_high') : tone === 'warn' ? t('verdict_risk_med') : t('verdict_risk_low')
 
   return (
     <div

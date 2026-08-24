@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import RiskMeter from './RiskMeter'
 import SignalChips from './SignalChips'
 import ReportSection from './ReportSection'
-import { getLabels, LANG_STORAGE_KEY } from '../lib/labels'
+import { useTranslation } from '../lib/useTranslation'
 
-// Human-readable labels for scam types from the backend taxonomy.
+// Human-readable labels for scam types from the backend taxonomy. This is
+// content-driven display copy (English-only), a different kind of label
+// than the UI chrome strings in translations.js — left as-is per task scope.
 const SCAM_LABEL = {
   digital_arrest: 'Digital Arrest Scam',
   investment_stock: 'Investment / Trading Scam',
@@ -37,30 +39,11 @@ function riskTone(risk, scamType) {
   return 'danger'
 }
 
-function useUiLang(detectedLanguage) {
-  const [uiLang, setUiLang] = useState(() => {
-    try {
-      return localStorage.getItem(LANG_STORAGE_KEY) || 'auto'
-    } catch {
-      return 'auto'
-    }
-  })
-
-  useEffect(() => {
-    function onChange(e) {
-      setUiLang(e.detail)
-    }
-    window.addEventListener('kavach:ui-lang-change', onChange)
-    return () => window.removeEventListener('kavach:ui-lang-change', onChange)
-  }, [])
-
-  return uiLang === 'auto' ? (detectedLanguage || 'en') : uiLang
-}
-
 // Small, muted footer: case ID + when it was analyzed, with a copy button.
 // This is the legal-admissibility story made visible — the same case_id can
 // be looked up later via GET /case/{case_id}.
 function CaseIdFooter({ caseId }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   // Captured once per verdict render, not re-computed on every re-render.
   const analyzedAt = useMemo(
@@ -83,7 +66,7 @@ function CaseIdFooter({ caseId }) {
 
   return (
     <div className="case-id-footer">
-      <span>Case ID: {caseId} · Analyzed at {analyzedAt}</span>
+      <span>{t('verdict_case_id')} {caseId} · Analyzed at {analyzedAt}</span>
       <button
         type="button"
         className="case-id-copy-btn"
@@ -126,6 +109,8 @@ function UrlReputationList({ urlReputation = [] }) {
 }
 
 export default function VerdictCard({ verdict }) {
+  const { t } = useTranslation()
+
   if (!verdict) return null
 
   const {
@@ -148,22 +133,21 @@ export default function VerdictCard({ verdict }) {
   // ImageVerdict includes extracted_text; a text-path Verdict never does.
   const fromImage = typeof extracted_text === 'string'
 
-  const displayLang = useUiLang(detected_language)
-  const L = getLabels(displayLang)
-
   const tone = riskTone(risk, scam_type)
   const isSafe = scam_type === 'likely_safe'
   const scamLabel = SCAM_LABEL[scam_type] || scam_type
   const langLabel = LANG_LABEL[detected_language] || detected_language
+  const toneLabel = tone === 'safe' ? t('verdict_safe') : tone === 'warn' ? t('verdict_caution') : t('verdict_danger')
 
   return (
     <article className="verdict" aria-live="polite">
       <div className={`verdict-header tone-${tone}`}>
         <div>
+          <div className={`verdict-tone-badge tone-${tone}`}>{toneLabel}</div>
           <div className={`verdict-scam-label tone-${tone}`}>{scamLabel}</div>
           <div className="verdict-lang-chip" title="Language auto-detected by the analyzer">
             <span aria-hidden="true">🌐</span>
-            <span>Detected: {langLabel}</span>
+            <span>{t('verdict_detected_lang')} {langLabel}</span>
           </div>
         </div>
         {isSafe ? (
@@ -190,14 +174,14 @@ export default function VerdictCard({ verdict }) {
 
         {explanation && (
           <div className="verdict-section">
-            <h3 className="section-label">{L.why}</h3>
+            <h3 className="section-label">{t('verdict_why')}</h3>
             <p className="verdict-explanation" lang={detected_language}>{explanation}</p>
           </div>
         )}
 
         {recommended_action && (
           <div className="verdict-section">
-            <h3 className="section-label">{L.whatToDo}</h3>
+            <h3 className="section-label">{t('verdict_what_to_do')}</h3>
             <div className="action-box" lang={detected_language}>{recommended_action}</div>
           </div>
         )}
@@ -205,15 +189,14 @@ export default function VerdictCard({ verdict }) {
         {isSafe && (
           <div className="verdict-section">
             <div className="safe-reassurance">
-              This message looks safe. If you are still unsure, do not share any OTP, PIN, or
-              money — trust your instincts.
+              {t('report_safe_note')}
             </div>
           </div>
         )}
 
         {!isSafe && ((signals && signals.length > 0) || urlReputation.some((u) => u.status !== 'clean')) && (
           <div className="verdict-section">
-            <h3 className="section-label">{L.signals}</h3>
+            <h3 className="section-label">{t('verdict_signals')}</h3>
             <SignalChips signals={signals} />
             <UrlReputationList urlReputation={urlReputation} />
           </div>
@@ -222,7 +205,7 @@ export default function VerdictCard({ verdict }) {
         {!isSafe && matched_patterns && matched_patterns.length > 0 && (
           <div className="verdict-section">
             <details className="patterns-details">
-              <summary>{L.patterns} ({matched_patterns.length})</summary>
+              <summary>{t('verdict_patterns')} ({matched_patterns.length})</summary>
               {matched_patterns.map((m, i) => (
                 <div className="pattern-card" key={m.id || i}>
                   <div className="pattern-header">
@@ -252,7 +235,7 @@ export default function VerdictCard({ verdict }) {
 
         {!isSafe && report && (
           <div className="verdict-section">
-            <ReportSection report={report} fromImage={fromImage} signals={signals} risk={risk} labels={L} />
+            <ReportSection report={report} fromImage={fromImage} signals={signals} risk={risk} />
           </div>
         )}
 

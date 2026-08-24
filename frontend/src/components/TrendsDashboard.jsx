@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getTrends } from '../lib/api'
+import { useTranslation } from '../lib/useTranslation'
 
 // Human-readable labels for scam-type keys returned by the backend.
 const SCAM_LABEL = {
@@ -19,7 +20,7 @@ const SCAM_LABEL = {
   unknown: 'Unknown',
 }
 
-const LANG_LABEL = { en: 'English', hi: 'हिन्दी', te: 'తెలుగు' }
+const LANG_LABEL = { en: 'English', hi: 'हिन्दी', te: 'తెలుగు', ta: 'தமிழ்' }
 
 const RISK_LABEL = { low: 'Low', medium: 'Medium', high: 'High' }
 const RISK_TONE = { low: 'safe', medium: 'caution', high: 'danger' }
@@ -114,7 +115,44 @@ function Sparkline({ series }) {
   )
 }
 
+// Pattern Intelligence: approved/pending/auto-approved counts from the
+// backend's crowd-verification pipeline. Not fetched separately — comes
+// back as part of the /trends response's pattern_intelligence field, which
+// may be absent on an older cached response or if the backend hasn't
+// populated it yet, so this renders nothing rather than crashing.
+function PatternIntelligence({ patternIntelligence, t }) {
+  if (!patternIntelligence) return null
+  const { approved_count, pending_count, auto_approved_count } = patternIntelligence
+
+  return (
+    <div className="trend-block">
+      <h3>{t('trends_patterns')}</h3>
+      <div className="stat-tiles">
+        <StatTile
+          title={t('trends_approved')}
+          rows={{ approved: approved_count || 0 }}
+          order={['approved']}
+          labels={{ approved: t('trends_approved') }}
+        />
+        <StatTile
+          title={t('trends_pending')}
+          rows={{ pending: pending_count || 0 }}
+          order={['pending']}
+          labels={{ pending: t('trends_pending') }}
+        />
+        <StatTile
+          title={t('trends_auto')}
+          rows={{ auto: auto_approved_count || 0 }}
+          order={['auto']}
+          labels={{ auto: t('trends_auto') }}
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function TrendsDashboard() {
+  const { t } = useTranslation()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -169,7 +207,7 @@ export default function TrendsDashboard() {
       <div className="trends-headline">
         <div>
           <div className="trends-total">
-            <span className="label">Messages checked</span>
+            <span className="label">{t('trends_total')}</span>
             {total.toLocaleString('en-IN')}
           </div>
         </div>
@@ -189,7 +227,7 @@ export default function TrendsDashboard() {
           tones={RISK_TONE}
         />
         <StatTile
-          title="Languages"
+          title={t('trends_languages')}
           rows={data.by_language}
           order={Object.keys(data.by_language || {})}
           labels={LANG_LABEL}
@@ -208,7 +246,7 @@ export default function TrendsDashboard() {
       </div>
 
       <div className="trend-block">
-        <h3>Scam types (all time)</h3>
+        <h3>{t('trends_scam_types')}</h3>
         <HBarList
           data={data.by_scam_type}
           labelMap={SCAM_LABEL}
@@ -220,6 +258,8 @@ export default function TrendsDashboard() {
         <h3>Last 7 days</h3>
         <Sparkline series={data.last_7_days} />
       </div>
+
+      <PatternIntelligence patternIntelligence={data.pattern_intelligence} t={t} />
 
       <p className="card-subtitle" style={{ marginTop: 'var(--space-4)', marginBottom: 0 }}>
         Only the fields shown above are stored. Message text, phone numbers, UPI IDs, links, and

@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useTranslation } from '../lib/useTranslation'
 
 const CHAKSHU_FORM_URL = 'https://sancharsaathi.gov.in/sfc/Home/sfc-complaint.jsp'
 
-export default function ReportSection({ report, fromImage = false, signals = [], risk = 0, labels }) {
+export default function ReportSection({ report, fromImage = false, signals = [], risk = 0 }) {
+  const { t } = useTranslation()
   const [categoryCopied, setCategoryCopied] = useState(false)
   const [toastVisible, setToastVisible] = useState(false)
 
@@ -48,19 +50,17 @@ export default function ReportSection({ report, fromImage = false, signals = [],
   return (
     <div className="report-section">
       <div className={`report-urgency-banner ${isSevere ? 'severe' : 'standard'}`}>
-        {isSevere
-          ? `⚠ ${labels?.reportNow || 'ACT NOW — REPORT THIS FRAUD'}`
-          : `⚠ ${labels?.reportSuggested || 'YOU SHOULD REPORT THIS'}`}
+        {isSevere ? `⚠ ${t('report_act_now')}` : `⚠ ${t('report_should_report')}`}
       </div>
 
       <div className="report-call-wrap">
         <a className="report-call-btn" href="tel:1930">
-          📞 Call 1930 — Cyber Crime Helpline
+          {t('report_call_1930')}
         </a>
-        <p className="report-call-sub">Free · 24/7 · Call if you have lost money</p>
+        <p className="report-call-sub">{t('report_call_desc')}</p>
       </div>
 
-      <div className="report-divider">or report online</div>
+      <div className="report-divider">{t('report_or')}</div>
 
       <div className="chakshu-card">
         <div className="chakshu-card-header">
@@ -70,11 +70,11 @@ export default function ReportSection({ report, fromImage = false, signals = [],
 
         {category && (
           <div className="chakshu-field">
-            <p className="chakshu-field-label">Select this category in the Chakshu form</p>
+            <p className="chakshu-field-label">{t('report_category_label')}</p>
             <div className="chakshu-value-box">
               <span>{category}</span>
               <button type="button" className="btn btn-secondary btn-small" onClick={copyCategory}>
-                {categoryCopied ? 'Copied ✓' : 'Copy'}
+                {categoryCopied ? t('report_copied') : t('report_copy')}
               </button>
             </div>
           </div>
@@ -82,7 +82,7 @@ export default function ReportSection({ report, fromImage = false, signals = [],
 
         {summary && (
           <div className="chakshu-field">
-            <p className="chakshu-field-label">Paste this into &quot;Enter complaint details&quot;</p>
+            <p className="chakshu-field-label">{t('report_complaint_label')}</p>
             <textarea
               className="chakshu-summary-textarea"
               readOnly
@@ -91,7 +91,7 @@ export default function ReportSection({ report, fromImage = false, signals = [],
               rows={4}
             />
             <button type="button" className="btn btn-secondary" style={{ marginTop: 10 }} onClick={copyComplaintAndOpenForm}>
-              Copy complaint text
+              {t('report_copy')}
             </button>
             <p className="chakshu-hint">
               Fill in the [ ] fields with your own details before submitting.
@@ -105,13 +105,13 @@ export default function ReportSection({ report, fromImage = false, signals = [],
         )}
 
         <a className="chakshu-open-link" href={CHAKSHU_FORM_URL} target="_blank" rel="noreferrer">
-          Open Chakshu form →
+          {t('report_chakshu_btn')}
         </a>
       </div>
 
       {report.evidence_checklist && report.evidence_checklist.length > 0 && (
         <details className="evidence-details" style={{ marginTop: 16 }}>
-          <summary>What to save as evidence ({report.evidence_checklist.length} items)</summary>
+          <summary>{t('report_evidence')} ({report.evidence_checklist.length})</summary>
           <ul>
             {report.evidence_checklist.map((item, i) => (
               <li key={i}>{item}</li>
@@ -127,7 +127,7 @@ export default function ReportSection({ report, fromImage = false, signals = [],
       )}
 
       <p className="report-disclaimer">
-        Kavach helps you prepare your report. You submit it directly on Chakshu.
+        {t('report_disclaimer')}
       </p>
     </div>
   )
