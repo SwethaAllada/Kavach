@@ -1,14 +1,25 @@
-"""Lightweight lexical retriever over data/scam_kb.json.
+"""Lightweight lexical retriever, Supabase-backed with a JSON-file fallback.
 
-No vector DB, no embeddings, stdlib only. Scores each KB entry by overlap
-between the input text and the entry's `indicators` + `title`, using a mix of
-substring / whole-token matching and TF-style weighting. Handles English,
-Hindi, and Telugu because the KB stores indicator phrases in all three
-scripts and we compare on lowercased NFC-normalized text.
+No vector DB, no embeddings, stdlib only (+ httpx for the Supabase read,
+mirroring services/store.py's existing pattern). Scores each KB entry by
+overlap between the input text and the entry's `indicators` + `title`, using
+a mix of substring / whole-token matching and TF-style weighting. Handles
+English, Hindi, and Telugu because the KB stores indicator phrases in all
+three scripts and we compare on lowercased NFC-normalized text.
 
-Public API:
+Entry source, in priority order:
+  1. A warm in-memory cache of rows from Supabase's `scam_patterns` table
+     (status='approved'), TTL 300s.
+  2. A fresh fetch from Supabase if the cache is cold/expired.
+  3. The original data/scam_kb.json file (via `_load_kb()`, unchanged) if
+     Supabase is unconfigured/unreachable/erroring, or if a fetch fails —
+     the JSON path is the permanent fallback, never removed.
+
+Public API (byte-identical contract to before this migration):
   - retrieve(text, top_k=3, min_similarity=0.15) -> list[dict]
   - get_kb() -> list[dict]  (returned entries mirror the JSON shape)
+  - format_grounding_context(hits) -> str
+  - invalidate_cache() -> None  (new — lets other modules force a reload)
 
 Never raises: on any load/scoring failure it returns [] and logs a warning.
 """
@@ -18,10 +29,15 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import unicodedata
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
+
+import httpx
+
+from core.config import settings
 
 log = logging.getLogger(__name__)
 
@@ -66,9 +82,138 @@ def _load_kb() -> list[dict]:
         return []
 
 
+# ---------------------------------------------------------------------------
+# Supabase-backed source (falls back to the JSON file above on any failure)
+# ---------------------------------------------------------------------------
+
+_TABLE = "scam_patterns"
+_READ_TIMEOUT_S = 8.0
+_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+# {"ts": epoch-seconds float | None, "entries": list[dict] | None}
+_supabase_cache: dict = {"ts": None, "entries": None}
+
+
+def _is_configured() -> bool:
+    return bool(settings.supabase_url and settings.supabase_service_key)
+
+
+def _rest_url() -> str:
+    base = settings.supabase_url.rstrip("/")
+    return f"{base}/rest/v1/{_TABLE}"
+
+
+def _headers() -> dict:
+    return {
+        "apikey": settings.supabase_service_key,
+        "Authorization": f"Bearer {settings.supabase_service_key}",
+        "Content-Type": "application/json",
+    }
+
+
+def _coerce_list(value) -> list:
+    """Defensively coerce a jsonb column's decoded value to a list — a
+    hand-edited DB row could have malformed JSON in indicators/languages."""
+    return value if isinstance(value, list) else []
+
+
+def _reshape_row(row: dict) -> dict:
+    """Reshape one Supabase scam_patterns row to the same dict shape as a
+    data/scam_kb.json entry (id, category, title, indicators, why_scam,
+    safe_action, source, languages)."""
+    return {
+        "id": row.get("id"),
+        "category": row.get("category"),
+        "title": row.get("title"),
+        "indicators": _coerce_list(row.get("indicators")),
+        "why_scam": row.get("why_scam", ""),
+        "safe_action": row.get("safe_action", ""),
+        "source": row.get("source", ""),
+        "languages": _coerce_list(row.get("languages")) or ["en"],
+    }
+
+
+def _load_from_supabase() -> list[dict] | None:
+    """Fetch all approved rows from Supabase's scam_patterns table.
+
+    Returns None on ANY failure (unconfigured, network, timeout, non-2xx,
+    bad JSON shape) — never raises, just logs a warning. On success, returns
+    entries reshaped to the same shape as the JSON KB entries.
+    """
+    if not _is_configured():
+        return None
+    try:
+        with httpx.Client(timeout=_READ_TIMEOUT_S) as client:
+            resp = client.get(
+                _rest_url(),
+                headers=_headers(),
+                params={"select": "*", "status": "eq.approved"},
+            )
+            if resp.status_code >= 300:
+                log.warning(
+                    "scam_patterns read failed: HTTP %s (%s)",
+                    resp.status_code,
+                    resp.reason_phrase,
+                )
+                return None
+            data = resp.json()
+            if not isinstance(data, list):
+                log.warning("scam_patterns read: unexpected response shape (not a list)")
+                return None
+            return [_reshape_row(row) for row in data if isinstance(row, dict)]
+    except Exception as e:
+        log.warning("scam_patterns read error (falling back to JSON KB): %s", e)
+        return None
+
+
+def _cache_is_warm() -> bool:
+    ts = _supabase_cache.get("ts")
+    entries = _supabase_cache.get("entries")
+    if ts is None or entries is None:
+        return False
+    return (time.time() - ts) < _CACHE_TTL_SECONDS
+
+
+def invalidate_cache() -> None:
+    """Force the next _get_entries() call to reload from Supabase.
+
+    Public so other modules (e.g. routes/patterns.py, after auto-approving a
+    new pattern) can make a freshly-inserted row visible to retrieve() on
+    the very next call rather than waiting out the normal 5-minute TTL.
+    """
+    _supabase_cache["ts"] = None
+
+
+def _get_entries() -> list[dict]:
+    """Return the entry list to score against: Supabase-backed cache first,
+    falling back to the JSON file (unchanged, existing behavior) if
+    Supabase is unconfigured, unreachable, or errors — and NEVER discarding
+    a still-good cache just because a refresh attempt failed."""
+    if _cache_is_warm():
+        return _supabase_cache["entries"]
+
+    fresh = _load_from_supabase()
+    if fresh is not None:
+        _supabase_cache["entries"] = fresh
+        _supabase_cache["ts"] = time.time()
+        return fresh
+
+    # Fetch failed. If we still have a (now technically-expired) cache from
+    # an earlier success, prefer it over throwing away good data — same
+    # philosophy as services/reputation.py's _refresh_cache_if_needed().
+    if _supabase_cache.get("entries") is not None:
+        return _supabase_cache["entries"]
+
+    # No Supabase data has ever been available — fall back to the original
+    # JSON-file KB, unchanged.
+    return _load_kb()
+
+
 def get_kb() -> list[dict]:
-    """Public accessor for the loaded KB (useful for tests / introspection)."""
-    return list(_load_kb())
+    """Public accessor for the entries currently in use (Supabase-backed
+    cache when available, else the JSON file) — useful for tests /
+    introspection."""
+    return list(_get_entries())
 
 
 def _score_entry(text_norm: str, text_tokens: set[str], entry: dict) -> tuple[float, list[str]]:
@@ -131,7 +276,7 @@ def retrieve(text: str, top_k: int = 3, min_similarity: float = 0.15) -> list[di
     Returns [] on any failure or when nothing crosses `min_similarity`.
     """
     try:
-        kb = _load_kb()
+        kb = _get_entries()
         if not kb or not text:
             return []
         text_norm = _normalize(text)

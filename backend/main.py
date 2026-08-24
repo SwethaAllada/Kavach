@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 
 from core.config import settings
 from core.rate_limit import RateLimiter
-from routes import analyze, image, trends, webhook
+from routes import analyze, image, patterns, trends, webhook
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +42,13 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 _limiter = RateLimiter(max_per_window=settings.rate_limit_per_min)
 _RATE_LIMITED_PATHS = {"/analyze", "/analyze-image", "/webhook"}
+
+# Separate, tighter limit for POST /patterns/submit: 3 per IP per HOUR.
+# Deliberately its own RateLimiter instance/window so it never shares state
+# or behavior with _limiter above — /analyze, /analyze-image, /webhook are
+# completely unaffected. GET /patterns/stats is intentionally NOT limited.
+_patterns_limiter = RateLimiter(max_per_window=3, window_seconds=3600.0)
+_PATTERNS_SUBMIT_PATH = "/patterns/submit"
 
 
 def _client_ip(request: Request) -> str:
@@ -86,6 +93,38 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def patterns_submit_rate_limit_middleware(request: Request, call_next):
+    """Separate, tighter limit (3/hour/IP) for POST /patterns/submit only —
+    additive, does not touch _limiter/_RATE_LIMITED_PATHS above. Same fail-open
+    discipline and 429 response shape as the existing limiter, for consistency."""
+    try:
+        if (
+            settings.rate_limit_enabled
+            and request.url.path == _PATTERNS_SUBMIT_PATH
+            and request.method == "POST"
+        ):
+            ip = _client_ip(request)
+            allowed, retry_after = _patterns_limiter.check(ip)
+            if not allowed:
+                return JSONResponse(
+                    status_code=429,
+                    headers={"Retry-After": str(retry_after)},
+                    content={
+                        "error": "rate_limited",
+                        "message": (
+                            "Too many requests. Please slow down and try again "
+                            f"in {retry_after} seconds."
+                        ),
+                        "retry_after_seconds": retry_after,
+                    },
+                )
+    except Exception as e:
+        log.warning("patterns rate limit middleware failed (fail-open): %s", e)
+
+    return await call_next(request)
+
+
 # ---------------------------------------------------------------------------
 # Security headers — applied to every response.
 # ---------------------------------------------------------------------------
@@ -111,6 +150,7 @@ app.include_router(analyze.router)
 app.include_router(image.router)
 app.include_router(webhook.router)
 app.include_router(trends.router)
+app.include_router(patterns.router)
 
 
 @app.get("/health")

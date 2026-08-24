@@ -29,3 +29,15 @@ class ImageVerdict(Verdict):
 
     extracted_text: str
     extracted_sender: str | None = None
+
+
+class PatternSubmitRequest(BaseModel):
+    """Request body for POST /patterns/submit — a user voluntarily
+    contributing a scam-message example to the crowd-verified KB. `text`
+    length (20-500 chars after stripping) and `source` length (<=100 chars)
+    are validated explicitly in the route handler, not here, so the handler
+    can strip() before checking length."""
+
+    text: str
+    category: str | None = None
+    source: str | None = None
