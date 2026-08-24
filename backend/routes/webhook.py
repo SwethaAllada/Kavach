@@ -509,16 +509,16 @@ async def _download_twilio_media(media_url: str) -> tuple[bytes | None, str | No
         return None, str(e)
 
 
-def _extract_text_from_whatsapp_image(image_bytes: bytes, content_type: str) -> str | None:
+def _extract_text_from_whatsapp_image(image_bytes: bytes, content_type: str) -> dict | None:
     """Extract text from a WhatsApp image using the vision service.
 
-    Returns the extracted text, or None on failure.
+    Returns {"text": str, "sender": str | None} on success, or None on failure.
     """
     try:
         result = extract_text_from_image(image_bytes, content_type)
         text = result.get("text", "").strip()
         if text:
-            return text
+            return {"text": text, "sender": result.get("sender")}
         return None
     except VisionExtractionFailed as e:
         log.warning("webhook: vision extraction failed: %s", e)
@@ -568,6 +568,9 @@ async def webhook(request: Request) -> Response:
 
     body = str(form.get("Body") or "").strip()
 
+    # Track image extraction metadata for reply formatting
+    image_extraction: dict | None = None
+
     # Handle image messages (screenshots)
     if num_media > 0 and media_url:
         log.info("webhook: received media message, type=%s, url=%s", media_type, media_url[:80])
@@ -588,10 +591,12 @@ async def webhook(request: Request) -> Response:
         log.info("webhook: downloaded image, %d bytes", len(image_bytes))
 
         # Extract text from the image using vision
-        extracted_text = _extract_text_from_whatsapp_image(image_bytes, media_type)
-        if not extracted_text:
+        image_extraction = _extract_text_from_whatsapp_image(image_bytes, media_type)
+        if not image_extraction:
             log.error("webhook: vision extraction returned no text")
             return _twiml(_IMAGE_FALLBACK_TEXT)
+
+        extracted_text = image_extraction["text"]
 
         # Use the extracted text for analysis (combine with any caption)
         if body:
@@ -645,5 +650,17 @@ async def webhook(request: Request) -> Response:
     except Exception as e:
         log.exception("webhook: formatter failed: %s", e)
         reply = _FALLBACK_TEXT
+
+    # Prepend screenshot attribution if this was an image analysis
+    if image_extraction is not None:
+        sender = image_extraction.get("sender")
+        if sender:
+            prepend = f"📸 From screenshot — Sender: {sender}\n\n"
+        else:
+            prepend = "📸 From screenshot\n\n"
+        reply = prepend + reply
+        # Truncate to WhatsApp limit (1600 chars is safe, 1500 with margin)
+        if len(reply) > 1500:
+            reply = reply[:1497] + "..."
 
     return _twiml(reply)

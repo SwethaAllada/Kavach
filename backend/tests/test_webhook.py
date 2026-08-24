@@ -855,7 +855,7 @@ def test_webhook_image_with_scam_text_returns_verdict(monkeypatch):
         return b"fake image bytes", None
 
     def _mock_extract_scam(image_bytes, content_type):
-        return "This is CBI. Your Aadhaar is linked to illegal parcel. Transfer Rs 2 lakh now."
+        return {"text": "This is CBI. Your Aadhaar is linked to illegal parcel. Transfer Rs 2 lakh now.", "sender": None}
 
     monkeypatch.setattr(webhook_module, "_download_twilio_media", _mock_download_ok)
     monkeypatch.setattr(webhook_module, "_extract_text_from_whatsapp_image", _mock_extract_scam)
@@ -875,5 +875,53 @@ def test_webhook_image_with_scam_text_returns_verdict(monkeypatch):
     r = client.post("/webhook", data=form, headers=_image_headers("4"))
     assert r.status_code == 200
     text = _twiml_text(r)
+    # Should have screenshot prepend line
+    assert "📸 From screenshot" in text
     assert "LIKELY SCAM" in text
     assert "Digital Arrest" in text
+
+
+def test_webhook_image_with_sender_shows_sender_in_reply(monkeypatch):
+    """Image with sender extracted shows sender in the prepend line."""
+    async def _mock_download_ok(url):
+        return b"fake image bytes", None
+
+    def _mock_extract_with_sender(image_bytes, content_type):
+        return {"text": "Your account is blocked. Call now.", "sender": "VM-HDFCBK"}
+
+    monkeypatch.setattr(webhook_module, "_download_twilio_media", _mock_download_ok)
+    monkeypatch.setattr(webhook_module, "_extract_text_from_whatsapp_image", _mock_extract_with_sender)
+    monkeypatch.setattr(classifier_module.llm_service, "analyze_message",
+                        _mock_llm_for("en_digital_arrest"))
+
+    form = {
+        "MessageSid": "SM_test_image_005",
+        "From": "whatsapp:+919812345678",
+        "To": "whatsapp:+14155552671",
+        "WaId": "919812345678",
+        "Body": "",
+        "NumMedia": "1",
+        "MediaUrl0": "https://api.twilio.com/media/test.jpg",
+        "MediaContentType0": "image/jpeg",
+    }
+    r = client.post("/webhook", data=form, headers=_image_headers("5"))
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    # Should have screenshot prepend line with sender
+    assert "📸 From screenshot — Sender: VM-HDFCBK" in text
+
+
+def test_webhook_no_media_does_not_have_screenshot_prepend(monkeypatch):
+    """Normal text messages should NOT have the screenshot prepend line."""
+    monkeypatch.setattr(classifier_module.llm_service, "analyze_message",
+                        _mock_llm_for("en_digital_arrest"))
+
+    r = _post_webhook(
+        "This is CBI. Transfer for verification.",
+        headers=_image_headers("6"),
+    )
+    assert r.status_code == 200
+    text = _twiml_text(r)
+    # Should NOT have screenshot prepend line
+    assert "📸 From screenshot" not in text
+    assert "LIKELY SCAM" in text
